@@ -1,0 +1,50 @@
+import * as React from 'react'
+
+import {useIsomorphicLayoutEffect} from '../../utils'
+
+/**
+ * Utility hook that scrolls an item from a menu into view.
+ * @param scrollIntoView The function that does the scroll.
+ * @param highlightedIndex The index of the item that should be scrolled.
+ * @param isOpen If the menu is open or not.
+ * @param menuRef The ref to the menu element.
+ * @param itemsRef The ref to the object containing item elements.
+ * @param getItemId The function to get the item id from index.
+ * @returns Function that when called prevents the scroll.
+ */
+export function useScrollIntoView(
+  scrollIntoView: (node: HTMLElement, menuNode: HTMLElement) => void,
+  highlightedIndex: number,
+  isOpen: boolean,
+  menuRef: React.MutableRefObject<HTMLElement | null>,
+  itemsRef: React.MutableRefObject<Record<string, HTMLElement>>,
+  getItemId: (index: number) => string,
+) {
+  // used not to scroll on highlight by mouse.
+  const shouldScrollRef = React.useRef(true)
+  // Scroll on highlighted item if change comes from keyboard.
+  useIsomorphicLayoutEffect(() => {
+    if (
+      highlightedIndex < 0 ||
+      !isOpen ||
+      !Object.keys(itemsRef.current).length
+    ) {
+      return
+    }
+
+    if (shouldScrollRef.current) {
+      const itemElement = itemsRef.current[getItemId(highlightedIndex)]
+
+      if (itemElement && menuRef.current) {
+        scrollIntoView(itemElement, menuRef.current)
+      }
+    } else {
+      shouldScrollRef.current = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only re-runs when highlightedIndex changes; other params are refs/stable values that don't trigger scrolling
+  }, [highlightedIndex])
+
+  return React.useCallback(function preventScroll() {
+    shouldScrollRef.current = false
+  }, [])
+}

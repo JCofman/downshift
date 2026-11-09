@@ -1,13 +1,51 @@
-import {act} from '@testing-library/react-hooks'
-import {renderCombobox, renderUseCombobox} from '../testUtils'
-import {items, defaultIds} from '../../testUtils'
+import useCombobox from '..'
+import {
+  act,
+  renderHook,
+  renderCombobox,
+  renderUseCombobox,
+  items,
+  defaultIds,
+  mouseMoveItemAtIndex,
+  getItemAtIndex,
+  getInput,
+  getItems,
+  clickOnItemAtIndex,
+  keyDownOnInput,
+} from './utils'
+
+jest.mock('../../utils', () => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const utils = jest.requireActual('../../utils')
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const hooksUtils = jest.requireActual('../../../utils')
+
+  return {
+    ...utils,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    useGetterPropsCalledChecker: () => hooksUtils.noop,
+  }
+})
+
+// We are using React 18.
+jest.mock('react', () => {
+  return {
+    ...jest.requireActual('react'),
+    useId() {
+      return 'test-id'
+    },
+  }
+})
+
+beforeEach(jest.resetAllMocks)
+afterAll(jest.restoreAllMocks)
 
 describe('getItemProps', () => {
   test('throws error if no index or item has been passed', () => {
     const {result} = renderUseCombobox()
 
-    expect(result.current.getItemProps).toThrowError(
-      'Pass either item or item index in getItemProps!',
+    expect(result.current.getItemProps).toThrow(
+      'Pass either item or index to getItemProps!',
     )
   })
 
@@ -38,27 +76,30 @@ describe('getItemProps', () => {
       const {result} = renderUseCombobox({highlightedIndex: 2})
       const itemProps = result.current.getItemProps({index: 2})
 
-      expect(itemProps['aria-selected']).toEqual('true')
+      expect(itemProps['aria-selected']).toEqual(true)
     })
 
     test("assign 'false' to aria-selected if item is not highlighted", () => {
       const {result} = renderUseCombobox({highlightedIndex: 1})
       const itemProps = result.current.getItemProps({index: 2})
 
-      expect(itemProps['aria-selected']).toEqual('false')
+      expect(itemProps['aria-selected']).toEqual(false)
     })
 
-    test("handlers are not called if it's disabled", () => {
-      const {result} = renderUseCombobox()
+    test("click handler is not called if it's disabled", () => {
+      const {result} = renderUseCombobox({
+        isItemDisabled(_item, index) {
+          return index === 0
+        },
+      })
       const itemProps = result.current.getItemProps({
-        disabled: true,
         index: 0,
       })
 
       expect(itemProps.onClick).toBeUndefined()
-      expect(itemProps.onMouseMove).toBeUndefined()
-      // eslint-disable-next-line jest-dom/prefer-enabled-disabled
-      expect(itemProps.disabled).toBe(true)
+      expect(itemProps.onMouseMove).toBeDefined()
+      expect(itemProps.onMouseDown).toBeDefined()
+      expect(itemProps['aria-disabled']).toBe(true)
     })
   })
 
@@ -106,6 +147,44 @@ describe('getItemProps', () => {
       expect(result.current.highlightedIndex).toBe(1)
     })
 
+    test('event handler onMouseDown is called along with downshift handler', () => {
+      const userOnMouseDown = jest.fn()
+      const preventDefault = jest.fn()
+      const {result} = renderUseCombobox({initialIsOpen: true})
+
+      act(() => {
+        const {onMouseDown} = result.current.getItemProps({
+          index: 1,
+          onMouseDown: userOnMouseDown,
+        })
+
+        onMouseDown({preventDefault})
+      })
+
+      expect(userOnMouseDown).toHaveBeenCalledTimes(1)
+      expect(preventDefault).toHaveBeenCalledTimes(1)
+    })
+
+    test("event handler onMouseDown is called without downshift handler if 'preventDownshiftDefault' is passed in user event", () => {
+      const userOnMouseDown = jest.fn(event => {
+        event.preventDownshiftDefault = true
+      })
+      const preventDefault = jest.fn()
+      const {result} = renderUseCombobox({initialIsOpen: true})
+
+      act(() => {
+        const {onMouseDown} = result.current.getItemProps({
+          index: 0,
+          onMouseDown: userOnMouseDown,
+        })
+
+        onMouseDown({preventDefault})
+      })
+
+      expect(userOnMouseDown).toHaveBeenCalledTimes(1)
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+
     test("event handler onClick is called without downshift handler if 'preventDownshiftDefault' is passed in user event", () => {
       const userOnClick = jest.fn(event => {
         event.preventDownshiftDefault = true
@@ -148,37 +227,37 @@ describe('getItemProps', () => {
 
   describe('event handlers', () => {
     describe('on mouse over', () => {
-      test('it highlights the item', () => {
+      test('it highlights the item', async () => {
         const index = 1
-        const {input, mouseMoveItemAtIndex, getItemAtIndex} = renderCombobox({
+        const {user} = renderCombobox({
           isOpen: true,
         })
 
-        mouseMoveItemAtIndex(index)
+        await mouseMoveItemAtIndex(user, index)
 
         expect(getItemAtIndex(index)).toHaveAttribute('aria-selected', 'true')
-        expect(input).toHaveAttribute(
+        expect(getInput()).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(index),
         )
       })
 
-      test('it removes highlight from the previously highlighted item', () => {
+      test('it removes highlight from the previously highlighted item', async () => {
         const index = 1
         const previousIndex = 2
-        const {input, mouseMoveItemAtIndex, getItemAtIndex} = renderCombobox({
+        const {user} = renderCombobox({
           isOpen: true,
           initialHighlightedIndex: previousIndex,
         })
 
-        mouseMoveItemAtIndex(index)
+        await mouseMoveItemAtIndex(user, index)
 
         expect(getItemAtIndex(index)).toHaveAttribute('aria-selected', 'true')
         expect(getItemAtIndex(previousIndex)).toHaveAttribute(
           'aria-selected',
           'false',
         )
-        expect(input).toHaveAttribute(
+        expect(getInput()).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(index),
         )
@@ -188,46 +267,104 @@ describe('getItemProps', () => {
         )
       })
 
-      it('keeps highlight on multiple events', () => {
+      it('keeps highlight on multiple events', async () => {
         const index = 1
-        const {input, mouseMoveItemAtIndex, getItemAtIndex} = renderCombobox({
+        const {user} = renderCombobox({
           isOpen: true,
         })
 
-        mouseMoveItemAtIndex(index)
-        mouseMoveItemAtIndex(index)
-        mouseMoveItemAtIndex(index)
+        await mouseMoveItemAtIndex(user, index)
+        await mouseMoveItemAtIndex(user, index)
+        await mouseMoveItemAtIndex(user, index)
 
-        expect(input).toHaveAttribute(
+        expect(getInput()).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(index),
         )
         expect(getItemAtIndex(index)).toHaveAttribute('aria-selected', 'true')
+      })
+
+      it('removes highlight from previous item even if current item is disabled', async () => {
+        const disabledIndex = 1
+        const highlightedIndex = 2
+
+        const {user} = renderCombobox({
+          items,
+          isOpen: true,
+          isItemDisabled(_item, index) {
+            return index === disabledIndex
+          },
+        })
+        const input = getInput()
+
+        await mouseMoveItemAtIndex(user, highlightedIndex)
+
+        expect(input).toHaveAttribute(
+          'aria-activedescendant',
+          defaultIds.getItemId(highlightedIndex),
+        )
+
+        await mouseMoveItemAtIndex(user, disabledIndex)
+        expect(input).toHaveAttribute('aria-activedescendant', '')
+      })
+
+      // Test that we don't call the mouse move handler on mobile.
+      test('does not set highlight the item if a touch event ocurred', async () => {
+        let touchEndHandler
+        const index = 1
+
+        const {user} = renderCombobox({
+          isOpen: true,
+          environment: {
+            addEventListener: (name, handler) => {
+              // eslint-disable-next-line jest/no-conditional-in-test
+              if (name === 'touchend') {
+                touchEndHandler = handler
+              }
+            },
+            removeEventListener: () => {},
+            document: {
+              createElement: () => {},
+              getElementById: () => {},
+              activeElement: () => {},
+              body: {},
+            },
+            Node: () => {},
+          },
+        })
+
+        act(() => touchEndHandler({target: null}))
+        await mouseMoveItemAtIndex(user, index)
+
+        expect(getInput()).toHaveAttribute('aria-activedescendant', '')
       })
     })
 
     describe('on click', () => {
-      test('it selects the item', () => {
+      test('it selects the item and keeps focus on the input', async () => {
         const index = 1
-        const {input, getItems, clickOnItemAtIndex} = renderCombobox({
+        const {user} = renderCombobox({
           initialIsOpen: true,
         })
+        const input = getInput()
 
-        clickOnItemAtIndex(index)
+        await clickOnItemAtIndex(user, index)
 
         expect(getItems()).toHaveLength(0)
         expect(input).toHaveValue(items[index])
+        expect(input).toHaveFocus()
       })
 
-      test('it selects the item and resets to user defined defaults', () => {
+      test('it selects the item and resets to user defined defaults', async () => {
         const index = 1
         const defaultHighlightedIndex = 2
-        const {input, getItems, clickOnItemAtIndex} = renderCombobox({
+        const {user} = renderCombobox({
           defaultIsOpen: true,
           defaultHighlightedIndex,
         })
+        const input = getInput()
 
-        clickOnItemAtIndex(index)
+        await clickOnItemAtIndex(user, index)
 
         expect(input).toHaveValue(items[index])
         expect(getItems()).toHaveLength(items.length)
@@ -236,20 +373,60 @@ describe('getItemProps', () => {
           defaultIds.getItemId(defaultHighlightedIndex),
         )
       })
+
+      test('it selects the item and resets to user defined defaults, but considers disabled status for an item', async () => {
+        const index = 1
+        const defaultHighlightedIndex = 2
+        const {user} = renderCombobox({
+          defaultIsOpen: true,
+          defaultHighlightedIndex,
+          isItemDisabled(_item, idx) {
+            return idx === defaultHighlightedIndex
+          },
+        })
+        const input = getInput()
+
+        await clickOnItemAtIndex(user, index)
+
+        expect(input).toHaveValue(items[index])
+        expect(getItems()).toHaveLength(items.length)
+        expect(input).toHaveAttribute('aria-activedescendant', '')
+      })
     })
   })
 
   describe('scrolling', () => {
-    test('is performed by the menu to the item if highlighted and not 100% visible', () => {
+    test('is performed by the menu to the item if highlighted and not 100% visible', async () => {
       const scrollIntoView = jest.fn()
-      const {keyDownOnInput} = renderCombobox({
+      const {user} = renderCombobox({
         initialIsOpen: true,
         scrollIntoView,
       })
 
-      keyDownOnInput('End')
+      await keyDownOnInput(user, '{End}')
 
       expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('non production errors', () => {
+    beforeAll(() => {
+      jest.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    afterAll(() => {
+      jest.restoreAllMocks()
+    })
+
+    test('will be displayed if getInputProps is not called', () => {
+      renderHook(() => {
+        const {getItemProps} = useCombobox({items})
+        getItemProps({disabled: true, index: 1})
+      })
+
+      expect(console.warn.mock.calls[0][0]).toMatchInlineSnapshot(
+        `Passing "disabled" as an argument to getItemProps is not supported anymore. Please use the isItemDisabled prop from useCombobox.`,
+      )
     })
   })
 })

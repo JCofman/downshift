@@ -1,4 +1,4 @@
-import {act} from '@testing-library/react-hooks'
+import {act} from '@testing-library/react'
 
 import {renderUseMultipleSelection} from '../testUtils'
 import * as stateChangeTypes from '../stateChangeTypes'
@@ -58,6 +58,34 @@ describe('returnProps', () => {
 
       expect(result.current.selectedItems).toStrictEqual(['test'])
       expect(result.current.activeIndex).toEqual(0)
+    })
+
+    test('removeSelectedItem handles undefined item without modifying the selected array or the active index', () => {
+      const {result} = renderUseMultipleSelection({
+        initialSelectedItems: ['test', 'more test'],
+        initialActiveIndex: 1,
+      })
+
+      act(() => {
+        result.current.removeSelectedItem(undefined)
+      })
+
+      expect(result.current.selectedItems).toStrictEqual(['test', 'more test'])
+      expect(result.current.activeIndex).toEqual(1)
+    })
+
+    test('removeSelectedItem handles null item without modifying the selected array or the active index', () => {
+      const {result} = renderUseMultipleSelection({
+        initialSelectedItems: ['test', 'more test'],
+        initialActiveIndex: 1,
+      })
+
+      act(() => {
+        result.current.removeSelectedItem(null)
+      })
+
+      expect(result.current.selectedItems).toStrictEqual(['test', 'more test'])
+      expect(result.current.activeIndex).toEqual(1)
     })
 
     test('setActiveIndex sets activeIndex', () => {

@@ -1,10 +1,56 @@
-/* eslint-disable jest/no-disabled-tests */
-import {act} from '@testing-library/react-hooks'
-import {renderCombobox, renderUseCombobox} from '../testUtils'
-import {items, defaultIds} from '../../testUtils'
+import {
+  act,
+  renderCombobox,
+  renderUseCombobox,
+  items,
+  defaultIds,
+  clickOnToggleButton,
+  getInput,
+  getItems,
+} from './utils'
+
+jest.mock('../../utils', () => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const utils = jest.requireActual('../../utils')
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const hooksUtils = jest.requireActual('../../../utils')
+
+  return {
+    ...utils,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    useGetterPropsCalledChecker: () => hooksUtils.noop,
+  }
+})
+
+// We are using React 18.
+jest.mock('react', () => {
+  return {
+    ...jest.requireActual('react'),
+    useId() {
+      return 'test-id'
+    },
+  }
+})
+
+beforeEach(jest.resetAllMocks)
+afterAll(jest.restoreAllMocks)
 
 describe('getToggleButtonProps', () => {
   describe('hook props', () => {
+    test('returns an object with some default props', () => {
+      const {result} = renderUseCombobox()
+      const toggleButtonProps = result.current.getToggleButtonProps()
+
+      expect(Object.keys(toggleButtonProps)).toEqual([
+        'ref',
+        'aria-controls',
+        'aria-expanded',
+        'id',
+        'tabIndex',
+        'onClick',
+      ])
+    })
+
     test('assign default value to id', () => {
       const {result} = renderUseCombobox()
       const toggleButtonProps = result.current.getToggleButtonProps()
@@ -22,6 +68,45 @@ describe('getToggleButtonProps', () => {
       expect(toggleButtonProps.id).toEqual(props.toggleButtonId)
     })
 
+    test('assign tabindex of -1', () => {
+      const {result} = renderUseCombobox()
+      const toggleButtonProps = result.current.getToggleButtonProps()
+
+      expect(toggleButtonProps.tabIndex).toEqual(-1)
+    })
+
+    test('assign default value to aria-controls', () => {
+      const {result} = renderUseCombobox()
+      const toggleButtonProps = result.current.getToggleButtonProps()
+
+      expect(toggleButtonProps['aria-controls']).toEqual(`${defaultIds.menuId}`)
+    })
+
+    test('assign custom value passed by user to aria-controls', () => {
+      const props = {
+        menuId: 'my-custom-menu-id',
+      }
+      const {result} = renderUseCombobox(props)
+      const toggleButtonProps = result.current.getToggleButtonProps()
+
+      expect(toggleButtonProps['aria-controls']).toEqual(`${props.menuId}`)
+    })
+
+    test("assign 'false' value to aria-expanded when menu is closed", () => {
+      const {result} = renderUseCombobox({isOpen: false})
+      const toggleButtonProps = result.current.getToggleButtonProps()
+
+      expect(toggleButtonProps['aria-expanded']).toEqual(false)
+    })
+
+    test("assign 'true' value to aria-expanded when menu is open", () => {
+      const {result} = renderUseCombobox({isOpen: true})
+
+      const toggleButtonProps = result.current.getToggleButtonProps()
+
+      expect(toggleButtonProps['aria-expanded']).toEqual(true)
+    })
+
     test('omit event handlers when disabled', () => {
       const {result} = renderUseCombobox()
       const toggleButtonProps = result.current.getToggleButtonProps({
@@ -29,7 +114,6 @@ describe('getToggleButtonProps', () => {
       })
 
       expect(toggleButtonProps.onClick).toBeUndefined()
-      // eslint-disable-next-line jest-dom/prefer-enabled-disabled
       expect(toggleButtonProps.disabled).toBe(true)
     })
   })
@@ -81,100 +165,101 @@ describe('getToggleButtonProps', () => {
 
   describe('event handlers', () => {
     describe('on click', () => {
-      test('opens the closed menu', () => {
-        const {getItems, clickOnToggleButton} = renderCombobox()
+      test('opens the closed menu', async () => {
+        const {user} = renderCombobox()
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
         expect(getItems()).toHaveLength(items.length)
       })
 
-      test('closes the open menu', () => {
-        const {getItems, clickOnToggleButton} = renderCombobox({
+      test('closes the open menu', async () => {
+        const {user} = renderCombobox({
           initialIsOpen: true,
         })
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
         expect(getItems()).toHaveLength(0)
       })
 
-      test('opens and closes menu at consecutive clicks', () => {
-        const {getItems, clickOnToggleButton} = renderCombobox()
+      test('opens and closes menu at consecutive clicks', async () => {
+        const {user} = renderCombobox()
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
         expect(getItems()).toHaveLength(items.length)
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
         expect(getItems()).toHaveLength(0)
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
         expect(getItems()).toHaveLength(items.length)
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
         expect(getItems()).toHaveLength(0)
       })
 
-      test('opens the closed menu without any option highlighted', () => {
-        const {input, clickOnToggleButton} = renderCombobox()
+      test('opens the closed menu without any option highlighted', async () => {
+        const {user} = renderCombobox()
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
-        expect(input).not.toHaveAttribute('aria-activedescendant')
+        expect(getInput()).toHaveAttribute('aria-activedescendant', '')
       })
 
-      test('opens the closed menu with selected option highlighted', () => {
+      test('opens the closed menu with selected option highlighted', async () => {
         const selectedIndex = 3
-        const {input, clickOnToggleButton} = renderCombobox({
+        const {user} = renderCombobox({
           initialSelectedItem: items[selectedIndex],
         })
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
-        expect(input).toHaveAttribute(
+        expect(getInput()).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(selectedIndex),
         )
       })
 
-      test('opens the closed menu at initialHighlightedIndex, but on first click only', () => {
+      test('opens the closed menu at initialHighlightedIndex, but on first click only', async () => {
         const initialHighlightedIndex = 3
-        const {input, clickOnToggleButton} = renderCombobox({
+        const {user} = renderCombobox({
           initialHighlightedIndex,
         })
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
-        expect(input).toHaveAttribute(
+        expect(getInput()).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(initialHighlightedIndex),
         )
 
-        clickOnToggleButton()
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
+        await clickOnToggleButton(user)
 
-        expect(input).not.toHaveAttribute('aria-activedescendant')
+        expect(getInput()).toHaveAttribute('aria-activedescendant', '')
       })
 
-      test('opens the closed menu at defaultHighlightedIndex, on every click', () => {
+      test('opens the closed menu at defaultHighlightedIndex, on every click', async () => {
         const defaultHighlightedIndex = 3
-        const {input, clickOnToggleButton} = renderCombobox({
+        const {user} = renderCombobox({
           defaultHighlightedIndex,
         })
+        const input = getInput()
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
         expect(input).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(defaultHighlightedIndex),
         )
 
-        clickOnToggleButton()
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
+        await clickOnToggleButton(user)
 
         expect(input).toHaveAttribute(
           'aria-activedescendant',
@@ -182,21 +267,22 @@ describe('getToggleButtonProps', () => {
         )
       })
 
-      test('opens the closed menu at highlightedIndex from props, on every click', () => {
+      test('opens the closed menu at highlightedIndex from props, on every click', async () => {
         const highlightedIndex = 3
-        const {input, clickOnToggleButton} = renderCombobox({
+        const {user} = renderCombobox({
           highlightedIndex,
         })
+        const input = getInput()
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
         expect(input).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(highlightedIndex),
         )
 
-        clickOnToggleButton()
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
+        await clickOnToggleButton(user)
 
         expect(input).toHaveAttribute(
           'aria-activedescendant',
@@ -204,12 +290,20 @@ describe('getToggleButtonProps', () => {
         )
       })
 
-      test('opens the closed menu and sets focus on the input', () => {
-        const {clickOnToggleButton, input} = renderCombobox()
+      test('opens the closed menu and sets focus on the input', async () => {
+        const {user} = renderCombobox()
 
-        clickOnToggleButton()
+        await clickOnToggleButton(user)
 
-        expect(input).toHaveFocus()
+        expect(getInput()).toHaveFocus()
+      })
+
+      test('opens the closed menu and sets no focus if there is no environment', async () => {
+        const {user} = renderCombobox({environment: undefined})
+
+        await clickOnToggleButton(user)
+
+        expect(getInput()).not.toHaveFocus()
       })
     })
   })

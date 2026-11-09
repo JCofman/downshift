@@ -1,18 +1,23 @@
 import {useRef, useEffect, useCallback, useMemo} from 'react'
-import setStatus from '../../set-a11y-status'
-import {handleRefs, callAllEventHandlers, normalizeArrowKey} from '../../utils'
+import {
+  callAllEventHandlers,
+  handleRefs,
+  normalizeArrowKey,
+} from '../../utils'
 import {
   useControlledReducer,
-  getItemIndex,
-  useGetterPropsCalledChecker,
-  useLatestRef,
+  useIsInitialMount,
+  useA11yMessageStatus,
+  getItemAndIndex,
   useControlPropsValidator,
+  useGetterPropsCalledChecker,
 } from '../utils'
 import {
   getInitialState,
   defaultProps,
   isKeyDownOperationPermitted,
   validatePropTypes,
+  isStateEqual,
 } from './utils'
 import downshiftMultipleSelectionReducer from './reducer'
 import * as stateChangeTypes from './stateChangeTypes'
@@ -27,8 +32,7 @@ function useMultipleSelection(userProps = {}) {
     ...userProps,
   }
   const {
-    getA11yRemovalMessage,
-    itemToString,
+    getA11yStatusMessage,
     environment,
     keyNavigationNext,
     keyNavigationPrevious,
@@ -37,69 +41,49 @@ function useMultipleSelection(userProps = {}) {
   // Reducer init.
   const [state, dispatch] = useControlledReducer(
     downshiftMultipleSelectionReducer,
-    getInitialState(props),
     props,
+    getInitialState,
+    isStateEqual,
   )
   const {activeIndex, selectedItems} = state
 
   // Refs.
-  const isInitialMountRef = useRef(true)
+  const isInitialMount = useIsInitialMount()
   const dropdownRef = useRef(null)
-  const previousSelectedItemsRef = useRef(selectedItems)
-  const selectedItemRefs = useRef()
-  selectedItemRefs.current = []
-  const latest = useLatestRef({state, props})
+  // Map of selected-item index -> DOM node. Populated by the ref callback in
+  // getSelectedItemProps and read by the focus effect. Keyed by
+  // index so we never reset it during render.
+  const selectedItemRefs = useRef(null)
+  if (selectedItemRefs.current === null) {
+    selectedItemRefs.current = new Map()
+  }
 
   // Effects.
-  /* Sets a11y status message on changes in selectedItem. */
-  useEffect(() => {
-    if (isInitialMountRef.current) {
-      return
-    }
-
-    if (selectedItems.length < previousSelectedItemsRef.current.length) {
-      const removedSelectedItem = previousSelectedItemsRef.current.find(
-        item => selectedItems.indexOf(item) < 0,
-      )
-
-      setStatus(
-        getA11yRemovalMessage({
-          itemToString,
-          resultCount: selectedItems.length,
-          removedSelectedItem,
-          activeIndex,
-          activeSelectedItem: selectedItems[activeIndex],
-        }),
-        environment.document,
-      )
-    }
-
-    previousSelectedItemsRef.current = selectedItems
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedItems.length])
+  // Adds an a11y aria live status message if getA11yStatusMessage is passed.
+  useA11yMessageStatus(
+    getA11yStatusMessage,
+    state,
+    [activeIndex, selectedItems],
+    environment,
+  )
   // Sets focus on active item.
   useEffect(() => {
-    if (isInitialMountRef.current) {
+    if (isInitialMount) {
       return
     }
 
     if (activeIndex === -1 && dropdownRef.current) {
       dropdownRef.current.focus()
-    } else if (selectedItemRefs.current[activeIndex]) {
-      selectedItemRefs.current[activeIndex].focus()
+    } else {
+      selectedItemRefs.current.get(activeIndex)?.focus()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex])
   useControlPropsValidator({
-    isInitialMount: isInitialMountRef.current,
     props,
     state,
   })
   const setGetterPropCallInfo = useGetterPropsCalledChecker('getDropdownProps')
-  // Make initial ref false.
-  useEffect(() => {
-    isInitialMountRef.current = false
-  }, [])
 
   // Event handler functions.
   const selectedItemKeyDownHandlers = useMemo(
@@ -154,21 +138,17 @@ function useMultipleSelection(userProps = {}) {
       ref,
       onClick,
       onKeyDown,
-      selectedItem,
-      index,
+      selectedItem: selectedItemProp,
+      index: indexProp,
       ...rest
     } = {}) => {
-      const {state: latestState} = latest.current
-      const itemIndex = getItemIndex(
-        index,
-        selectedItem,
-        latestState.selectedItems,
+      const [, index] = getItemAndIndex(
+        selectedItemProp,
+        indexProp,
+        selectedItems,
+        'Pass either item or index to getSelectedItemProps!',
       )
-      if (itemIndex < 0) {
-        throw new Error(
-          'Pass either selectedItem or index in getSelectedItemProps!',
-        )
-      }
+      const isFocusable = index > -1 && index === activeIndex
 
       const selectedItemHandleClick = () => {
         dispatch({
@@ -186,16 +166,18 @@ function useMultipleSelection(userProps = {}) {
       return {
         [refKey]: handleRefs(ref, selectedItemNode => {
           if (selectedItemNode) {
-            selectedItemRefs.current.push(selectedItemNode)
+            selectedItemRefs.current.set(index, selectedItemNode)
+          } else {
+            selectedItemRefs.current.delete(index)
           }
         }),
-        tabIndex: index === latestState.activeIndex ? 0 : -1,
+        tabIndex: isFocusable ? 0 : -1,
         onClick: callAllEventHandlers(onClick, selectedItemHandleClick),
         onKeyDown: callAllEventHandlers(onKeyDown, selectedItemHandleKeyDown),
         ...rest,
       }
     },
-    [dispatch, latest, selectedItemKeyDownHandlers],
+    [dispatch, selectedItems, activeIndex, selectedItemKeyDownHandlers],
   )
   const getDropdownProps = useCallback(
     (

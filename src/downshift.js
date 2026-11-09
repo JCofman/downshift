@@ -3,30 +3,31 @@
 import PropTypes from 'prop-types'
 import {Component, cloneElement} from 'react'
 import {isForwardRef} from 'react-is'
-import {isPreact, isReactNative} from './is.macro'
-import setA11yStatus from './set-a11y-status'
+import {isPreact, isReactNative, isReactNativeWeb} from './is.macro'
 import * as stateChangeTypes from './stateChangeTypes'
 import {
-  handleRefs,
-  callAllEventHandlers,
   cbToCb,
-  debounce,
-  generateId,
   getA11yStatusMessage,
   getElementProps,
   isDOMElement,
-  targetWithinDownshift,
   isPlainObject,
-  noop,
-  normalizeArrowKey,
   pickState,
   requiredProp,
-  scrollIntoView,
   unwrapArray,
-  getNextWrappingIndex,
-  getNextNonDisabledIndex,
+} from './utils.legacy'
+import {
+  generateId,
+  scrollIntoView,
+  setStatus,
   getState,
-  isControlledProp,
+  noop,
+  callAllEventHandlers,
+  handleRefs,
+  debounce,
+  normalizeArrowKey,
+  getHighlightedIndex,
+  getNonDisabledIndex,
+  targetWithinDownshift,
   validateControlledUnchanged,
 } from './utils'
 
@@ -52,13 +53,15 @@ class Downshift extends Component {
     itemCount: PropTypes.number,
     id: PropTypes.string,
     environment: PropTypes.shape({
-      addEventListener: PropTypes.func,
-      removeEventListener: PropTypes.func,
+      addEventListener: PropTypes.func.isRequired,
+      removeEventListener: PropTypes.func.isRequired,
       document: PropTypes.shape({
-        getElementById: PropTypes.func,
-        activeElement: PropTypes.any,
-        body: PropTypes.any,
-      }),
+        createElement: PropTypes.func.isRequired,
+        getElementById: PropTypes.func.isRequired,
+        activeElement: PropTypes.any.isRequired,
+        body: PropTypes.any.isRequired,
+      }).isRequired,
+      Node: PropTypes.func.isRequired,
     }),
     suppressRefError: PropTypes.bool,
     scrollIntoView: PropTypes.func,
@@ -107,7 +110,7 @@ class Downshift extends Component {
     selectedItemChanged: (prevItem, item) => prevItem !== item,
     environment:
       /* istanbul ignore next (ssr) */
-      typeof window === 'undefined' ? {} : window,
+      typeof window === 'undefined' || isReactNative ? undefined : window,
     stateReducer: (state, stateToSet) => stateToSet,
     suppressRefError: false,
     scrollIntoView,
@@ -149,7 +152,6 @@ class Downshift extends Component {
   inputId = this.props.inputId || `${this.id}-input`
   getItemId = this.props.getItemId || (index => `${this.id}-item-${index}`)
 
-  input = null
   items = []
   // itemCount can be changed asynchronously
   // from within downshift (so it can't come from a prop)
@@ -221,7 +223,15 @@ class Downshift extends Component {
   }
 
   getItemNodeFromIndex(index) {
-    return this.props.environment.document.getElementById(this.getItemId(index))
+    return this.props.environment
+      ? this.props.environment.document.getElementById(this.getItemId(index))
+      : null
+  }
+
+  isItemDisabled = (_item, index) => {
+    const currentElementNode = this.getItemNodeFromIndex(index)
+
+    return currentElementNode && currentElementNode.hasAttribute('disabled')
   }
 
   setHighlightedIndex = (
@@ -244,11 +254,12 @@ class Downshift extends Component {
     const itemCount = this.getItemCount()
     const {highlightedIndex} = this.getState()
     if (itemCount > 0) {
-      const nextHighlightedIndex = getNextWrappingIndex(
-        amount,
+      const nextHighlightedIndex = getHighlightedIndex(
         highlightedIndex,
-        itemCount,
-        index => this.getItemNodeFromIndex(index),
+        amount,
+        {length: itemCount},
+        this.isItemDisabled,
+        true,
       )
       this.setHighlightedIndex(nextHighlightedIndex, otherStateToSet)
     }
@@ -348,7 +359,7 @@ class Downshift extends Component {
         ) {
           onChangeArg = newStateToSet.selectedItem
         }
-        newStateToSet.type = newStateToSet.type || stateChangeTypes.unknown
+        newStateToSet.type ||= stateChangeTypes.unknown
 
         Object.keys(newStateToSet).forEach(key => {
           // onStateChangeArg should only have the state that is
@@ -367,7 +378,7 @@ class Downshift extends Component {
           }
           nextFullState[key] = newStateToSet[key]
           // if it's coming from props, then we don't care to set it internally
-          if (!isControlledProp(this.props, key)) {
+          if (this.props[key] === undefined) {
             nextState[key] = newStateToSet[key]
           }
         })
@@ -496,7 +507,7 @@ class Downshift extends Component {
       role: 'combobox',
       'aria-expanded': isOpen,
       'aria-haspopup': 'listbox',
-      'aria-owns': isOpen ? this.menuId : null,
+      'aria-owns': isOpen ? this.menuId : undefined,
       'aria-labelledby': this.labelId,
       ...rest,
     }
@@ -523,11 +534,12 @@ class Downshift extends Component {
             const itemCount = this.getItemCount()
             if (itemCount > 0) {
               const {highlightedIndex} = this.getState()
-              const nextHighlightedIndex = getNextWrappingIndex(
-                1,
+              const nextHighlightedIndex = getHighlightedIndex(
                 highlightedIndex,
-                itemCount,
-                index => this.getItemNodeFromIndex(index),
+                1,
+                {length: itemCount},
+                this.isItemDisabled,
+                true,
               )
 
               this.setHighlightedIndex(nextHighlightedIndex, {
@@ -557,11 +569,12 @@ class Downshift extends Component {
             const itemCount = this.getItemCount()
             if (itemCount > 0) {
               const {highlightedIndex} = this.getState()
-              const nextHighlightedIndex = getNextWrappingIndex(
-                -1,
+              const nextHighlightedIndex = getHighlightedIndex(
                 highlightedIndex,
-                itemCount,
-                index => this.getItemNodeFromIndex(index),
+                -1,
+                {length: itemCount},
+                this.isItemDisabled,
+                true,
               )
 
               this.setHighlightedIndex(nextHighlightedIndex, {
@@ -630,12 +643,11 @@ class Downshift extends Component {
       }
 
       // get next non-disabled starting downwards from 0 if that's disabled.
-      const newHighlightedIndex = getNextNonDisabledIndex(
-        1,
+      const newHighlightedIndex = getNonDisabledIndex(
         0,
-        itemCount,
-        index => this.getItemNodeFromIndex(index),
         false,
+        {length: itemCount},
+        this.isItemDisabled,
       )
 
       this.setHighlightedIndex(newHighlightedIndex, {
@@ -659,12 +671,11 @@ class Downshift extends Component {
       }
 
       // get next non-disabled starting upwards from last index if that's disabled.
-      const newHighlightedIndex = getNextNonDisabledIndex(
-        -1,
+      const newHighlightedIndex = getNonDisabledIndex(
         itemCount - 1,
-        itemCount,
-        index => this.getItemNodeFromIndex(index),
-        false,
+        true,
+        {length: itemCount},
+        this.isItemDisabled,
       )
 
       this.setHighlightedIndex(newHighlightedIndex, {
@@ -682,17 +693,21 @@ class Downshift extends Component {
     ...rest
   } = {}) => {
     const {isOpen} = this.getState()
-    const enabledEventHandlers = isReactNative
-      ? /* istanbul ignore next (react-native) */
-        {
-          onPress: callAllEventHandlers(onPress, this.buttonHandleClick),
-        }
-      : {
-          onClick: callAllEventHandlers(onClick, this.buttonHandleClick),
-          onKeyDown: callAllEventHandlers(onKeyDown, this.buttonHandleKeyDown),
-          onKeyUp: callAllEventHandlers(onKeyUp, this.buttonHandleKeyUp),
-          onBlur: callAllEventHandlers(onBlur, this.buttonHandleBlur),
-        }
+    const enabledEventHandlers =
+      isReactNative || isReactNativeWeb
+        ? /* istanbul ignore next (react-native) */
+          {
+            onPress: callAllEventHandlers(onPress, this.buttonHandleClick),
+          }
+        : {
+            onClick: callAllEventHandlers(onClick, this.buttonHandleClick),
+            onKeyDown: callAllEventHandlers(
+              onKeyDown,
+              this.buttonHandleKeyDown,
+            ),
+            onKeyUp: callAllEventHandlers(onKeyUp, this.buttonHandleKeyUp),
+            onBlur: callAllEventHandlers(onBlur, this.buttonHandleBlur),
+          }
     const eventHandlers = rest.disabled ? {} : enabledEventHandlers
     return {
       type: 'button',
@@ -722,12 +737,12 @@ class Downshift extends Component {
     // handle odd case for Safari and Firefox which
     // don't give the button the focus properly.
     /* istanbul ignore if (can't reasonably test this) */
-    if (
-      !isReactNative &&
-      this.props.environment.document.activeElement ===
-        this.props.environment.document.body
-    ) {
-      event.target.focus()
+    if (!isReactNative && this.props.environment) {
+      const {body, activeElement} = this.props.environment.document
+
+      if (body && body === activeElement) {
+        event.target.focus()
+      }
     }
     // to simplify testing components that use downshift, we'll not wrap this in a setTimeout
     // if the NODE_ENV is test. With the proper build system, this should be dead code eliminated
@@ -746,11 +761,15 @@ class Downshift extends Component {
     const blurTarget = event.target // Save blur target for comparison with activeElement later
     // Need setTimeout, so that when the user presses Tab, the activeElement is the next focused element, not body element
     this.internalSetTimeout(() => {
+      if (this.isMouseDown || !this.props.environment) {
+        return
+      }
+
+      const {activeElement} = this.props.environment.document
+
       if (
-        !this.isMouseDown &&
-        (this.props.environment.document.activeElement == null ||
-          this.props.environment.document.activeElement.id !== this.inputId) &&
-        this.props.environment.document.activeElement !== blurTarget // Do nothing if we refocus the same element again (to solve issue in Safari on iOS)
+        (activeElement == null || activeElement.id !== this.inputId) &&
+        activeElement !== blurTarget // Do nothing if we refocus the same element again (to solve issue in Safari on iOS)
       ) {
         this.reset({type: stateChangeTypes.blurButton})
       }
@@ -820,9 +839,9 @@ class Downshift extends Component {
       'aria-activedescendant':
         isOpen && typeof highlightedIndex === 'number' && highlightedIndex >= 0
           ? this.getItemId(highlightedIndex)
-          : null,
-      'aria-controls': isOpen ? this.menuId : null,
-      'aria-labelledby': this.labelId,
+          : undefined,
+      'aria-controls': isOpen ? this.menuId : undefined,
+      'aria-labelledby': rest && rest['aria-label'] ? undefined : this.labelId,
       // https://developer.mozilla.org/en-US/docs/Web/Security/Securing_your_site/Turning_off_form_autocompletion
       // revert back since autocomplete="nope" is ignored on latest Chrome and Opera
       autoComplete: 'off',
@@ -844,9 +863,10 @@ class Downshift extends Component {
     this.internalSetState({
       type: stateChangeTypes.changeInput,
       isOpen: true,
-      inputValue: isReactNative
-        ? /* istanbul ignore next (react-native) */ event.nativeEvent.text
-        : event.target.value,
+      inputValue:
+        isReactNative || isReactNativeWeb
+          ? /* istanbul ignore next (react-native) */ event.nativeEvent.text
+          : event.target.value,
       highlightedIndex: this.props.defaultHighlightedIndex,
     })
   }
@@ -854,14 +874,17 @@ class Downshift extends Component {
   inputHandleBlur = () => {
     // Need setTimeout, so that when the user presses Tab, the activeElement is the next focused element, not the body element
     this.internalSetTimeout(() => {
+      if (this.isMouseDown || !this.props.environment) {
+        return
+      }
+
+      const {activeElement} = this.props.environment.document
       const downshiftButtonIsActive =
-        this.props.environment.document &&
-        !!this.props.environment.document.activeElement &&
-        !!this.props.environment.document.activeElement.dataset &&
-        this.props.environment.document.activeElement.dataset.toggle &&
+        activeElement?.dataset?.toggle &&
         this._rootNode &&
-        this._rootNode.contains(this.props.environment.document.activeElement)
-      if (!this.isMouseDown && !downshiftButtonIsActive) {
+        this._rootNode.contains(activeElement)
+
+      if (!downshiftButtonIsActive) {
         this.reset({type: stateChangeTypes.blurInput})
       }
     })
@@ -886,7 +909,8 @@ class Downshift extends Component {
     return {
       [refKey]: handleRefs(ref, this.menuRef),
       role: 'listbox',
-      'aria-labelledby': props && props['aria-label'] ? null : this.labelId,
+      'aria-labelledby':
+        props && props['aria-label'] ? undefined : this.labelId,
       id: this.menuId,
       ...props,
     }
@@ -912,9 +936,10 @@ class Downshift extends Component {
       this.items[index] = item
     }
 
-    const onSelectKey = isReactNative
-      ? /* istanbul ignore next (react-native) */ 'onPress'
-      : 'onClick'
+    const onSelectKey =
+      isReactNative || isReactNativeWeb
+        ? /* istanbul ignore next (react-native) */ 'onPress'
+        : 'onClick'
     const customClickHandler = isReactNative
       ? /* istanbul ignore next (react-native) */ onPress
       : onClick
@@ -1017,6 +1042,10 @@ class Downshift extends Component {
   }
 
   updateStatus = debounce(() => {
+    if (!this.props?.environment?.document) {
+      return
+    }
+
     const state = this.getState()
     const item = this.items[state.highlightedIndex]
     const resultCount = this.getItemCount()
@@ -1029,7 +1058,7 @@ class Downshift extends Component {
     })
     this.previousResultCount = resultCount
 
-    setA11yStatus(status, this.props.environment.document)
+    setStatus(status, this.props.environment.document)
   }, 200)
 
   componentDidMount() {
@@ -1043,8 +1072,8 @@ class Downshift extends Component {
       validateGetMenuPropsCalledCorrectly(this._menuNode, this.getMenuProps)
     }
 
-    /* istanbul ignore if (react-native) */
-    if (isReactNative) {
+    /* istanbul ignore if (react-native or SSR) */
+    if (isReactNative || !this.props.environment) {
       this.cleanup = () => {
         this.internalClearTimeouts()
       }
@@ -1105,20 +1134,23 @@ class Downshift extends Component {
       }
       const {environment} = this.props
 
-      environment.addEventListener('mousedown', onMouseDown)
-      environment.addEventListener('mouseup', onMouseUp)
-      environment.addEventListener('touchstart', onTouchStart)
-      environment.addEventListener('touchmove', onTouchMove)
-      environment.addEventListener('touchend', onTouchEnd)
+      const options = {passive: true}
+
+      environment.addEventListener('mousedown', onMouseDown, options)
+      environment.addEventListener('mouseup', onMouseUp, options)
+      environment.addEventListener('touchstart', onTouchStart, options)
+      environment.addEventListener('touchmove', onTouchMove, options)
+      environment.addEventListener('touchend', onTouchEnd, options)
 
       this.cleanup = () => {
         this.internalClearTimeouts()
         this.updateStatus.cancel()
-        environment.removeEventListener('mousedown', onMouseDown)
-        environment.removeEventListener('mouseup', onMouseUp)
-        environment.removeEventListener('touchstart', onTouchStart)
-        environment.removeEventListener('touchmove', onTouchMove)
-        environment.removeEventListener('touchend', onTouchEnd)
+
+        environment.removeEventListener('mousedown', onMouseDown, options)
+        environment.removeEventListener('mouseup', onMouseUp, options)
+        environment.removeEventListener('touchstart', onTouchStart, options)
+        environment.removeEventListener('touchmove', onTouchMove, options)
+        environment.removeEventListener('touchend', onTouchEnd, options)
       }
     }
   }
@@ -1150,7 +1182,7 @@ class Downshift extends Component {
     }
 
     if (
-      isControlledProp(this.props, 'selectedItem') &&
+      this.props.selectedItem !== undefined &&
       this.props.selectedItemChanged(
         prevProps.selectedItem,
         this.props.selectedItem,

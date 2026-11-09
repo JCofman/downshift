@@ -1,39 +1,15 @@
 import PropTypes from 'prop-types'
-import {
-  getInitialValue as getInitialValueCommon,
-  getDefaultValue as getDefaultValueCommon,
-  defaultProps as defaultPropsCommon,
-} from '../utils'
-import {noop} from '../../utils'
 
-const defaultStateValues = {
+import {noop} from '../../utils'
+import {
+  dropdownDefaultProps,
+  dropdownPropTypes,
+  getInitialValue,
+} from '../utils'
+
+export const defaultStateValues = {
   activeIndex: -1,
   selectedItems: [],
-}
-
-/**
- * Returns the initial value for a state key in the following order:
- * 1. controlled prop, 2. initial prop, 3. default prop, 4. default
- * value from Downshift.
- *
- * @param {Object} props Props passed to the hook.
- * @param {string} propKey Props key to generate the value for.
- * @returns {any} The initial value for that prop.
- */
-function getInitialValue(props, propKey) {
-  return getInitialValueCommon(props, propKey, defaultStateValues)
-}
-
-/**
- * Returns the default value for a state key in the following order:
- * 1. controlled prop, 2. default prop, 3. default value from Downshift.
- *
- * @param {Object} props Props passed to the hook.
- * @param {string} propKey Props key to generate the value for.
- * @returns {any} The initial value for that prop.
- */
-function getDefaultValue(props, propKey) {
-  return getDefaultValueCommon(props, propKey, defaultStateValues)
 }
 
 /**
@@ -44,8 +20,18 @@ function getDefaultValue(props, propKey) {
  * @returns {Object} The initial state.
  */
 function getInitialState(props) {
-  const activeIndex = getInitialValue(props, 'activeIndex')
-  const selectedItems = getInitialValue(props, 'selectedItems')
+  const activeIndex = getInitialValue(
+    props.activeIndex,
+    props.initialActiveIndex,
+    props.defaultActiveIndex,
+    defaultStateValues.activeIndex,
+  )
+  const selectedItems = getInitialValue(
+    props.selectedItems,
+    props.initialSelectedItems,
+    props.defaultSelectedItems,
+    defaultStateValues.selectedItems,
+  )
 
   return {
     activeIndex,
@@ -82,27 +68,28 @@ function isKeyDownOperationPermitted(event) {
 }
 
 /**
- * Returns a message to be added to aria-live region when item is removed.
+ * Check if a state is equal for taglist, by comparing active index and selected items.
+ * Used by useSelect and useCombobox.
  *
- * @param {Object} selectionParameters Parameters required to build the message.
- * @returns {string} The a11y message.
+ * @param {Object} prevState
+ * @param {Object} newState
+ * @returns {boolean} Wheather the states are deeply equal.
  */
-function getA11yRemovalMessage(selectionParameters) {
-  const {
-    removedSelectedItem,
-    itemToString: itemToStringLocal,
-  } = selectionParameters
-
-  return `${itemToStringLocal(removedSelectedItem)} has been removed.`
+function isStateEqual(prevState, newState) {
+  return (
+    prevState.selectedItems === newState.selectedItems &&
+    prevState.activeIndex === newState.activeIndex
+  )
 }
 
 const propTypes = {
+  stateReducer: dropdownPropTypes.stateReducer,
+  itemToKey: dropdownPropTypes.itemToKey,
+  environment: dropdownPropTypes.environment,
   selectedItems: PropTypes.array,
   initialSelectedItems: PropTypes.array,
   defaultSelectedItems: PropTypes.array,
-  itemToString: PropTypes.func,
-  getA11yRemovalMessage: PropTypes.func,
-  stateReducer: PropTypes.func,
+  getA11yStatusMessage: PropTypes.func,
   activeIndex: PropTypes.number,
   initialActiveIndex: PropTypes.number,
   defaultActiveIndex: PropTypes.number,
@@ -110,22 +97,12 @@ const propTypes = {
   onSelectedItemsChange: PropTypes.func,
   keyNavigationNext: PropTypes.string,
   keyNavigationPrevious: PropTypes.string,
-  environment: PropTypes.shape({
-    addEventListener: PropTypes.func,
-    removeEventListener: PropTypes.func,
-    document: PropTypes.shape({
-      getElementById: PropTypes.func,
-      activeElement: PropTypes.any,
-      body: PropTypes.any,
-    }),
-  }),
 }
 
 export const defaultProps = {
-  itemToString: defaultPropsCommon.itemToString,
-  stateReducer: defaultPropsCommon.stateReducer,
-  environment: defaultPropsCommon.environment,
-  getA11yRemovalMessage,
+  itemToKey: dropdownDefaultProps.itemToKey,
+  stateReducer: dropdownDefaultProps.stateReducer,
+  environment: dropdownDefaultProps.environment,
   keyNavigationNext: 'ArrowRight',
   keyNavigationPrevious: 'ArrowLeft',
 }
@@ -141,7 +118,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 export {
   validatePropTypes,
-  getDefaultValue,
   getInitialState,
   isKeyDownOperationPermitted,
+  isStateEqual,
 }

@@ -1,19 +1,23 @@
 import * as React from 'react'
 
-import {render, fireEvent, screen} from '@testing-library/react'
-import {renderHook} from '@testing-library/react-hooks'
+import {render, screen, renderHook} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import {defaultProps} from '../utils'
-import {items} from '../testUtils'
+import {dropdownDefaultProps} from '../utils'
+import {items, dataTestIds} from '../testUtils'
 import useCombobox from '../useCombobox'
+import {getInput, keyDownOnInput} from '../useCombobox/__tests__/utils'
 import useMultipleSelection from '.'
 
-jest.mock('../../utils', () => {
-  const utils = jest.requireActual('../../utils')
+export * from '../testUtils'
+export {getInput, keyDownOnInput}
 
+// We are using React 18.
+jest.mock('react', () => {
   return {
-    ...utils,
-    generateId: () => 'test-id',
+    ...jest.requireActual('react'),
+    useId() {
+      return 'test-id'
+    },
   }
 })
 
@@ -30,34 +34,47 @@ jest.mock('../utils', () => {
 beforeEach(jest.resetAllMocks)
 afterAll(jest.restoreAllMocks)
 
-export const dataTestIds = {
-  selectedItemPrefix: 'selected-item-id',
-  selectedItem: index => `selected-item-id-${index}`,
-  input: 'input-id',
+export function getSelectedItemAtIndex(index) {
+  return screen.getByTestId(dataTestIds.selectedItem(index))
+}
+
+export function getSelectedItems() {
+  return screen.queryAllByTestId(new RegExp(dataTestIds.selectedItemPrefix))
+}
+
+export async function clickOnSelectedItemAtIndex(user, index) {
+  await user.click(getSelectedItemAtIndex(index))
+}
+export async function keyDownOnSelectedItemAtIndex(user, index, key) {
+  const selectedItem = getSelectedItemAtIndex(index)
+
+  if (document.activeElement !== selectedItem) {
+    selectedItem.focus()
+  }
+
+  await user.keyboard(key)
+}
+
+export function focusSelectedItemAtIndex(index) {
+  getSelectedItemAtIndex(index).focus()
+}
+
+export async function clickOnInput(user) {
+  await user.click(getInput())
 }
 
 const DropdownMultipleCombobox = ({
   multipleSelectionProps = {},
   comboboxProps = {},
 }) => {
-  const {
-    getSelectedItemProps,
-    getDropdownProps,
-    selectedItems,
-  } = useMultipleSelection(multipleSelectionProps)
-  const {
-    getToggleButtonProps,
-    getLabelProps,
-    getMenuProps,
-    getInputProps,
-    getComboboxProps,
-  } = useCombobox({
-    items,
-    ...comboboxProps,
-  })
-  const {itemToString} = multipleSelectionProps.itemToString
-    ? multipleSelectionProps
-    : defaultProps
+  const {getSelectedItemProps, getDropdownProps, selectedItems} =
+    useMultipleSelection(multipleSelectionProps)
+  const {getToggleButtonProps, getLabelProps, getMenuProps, getInputProps} =
+    useCombobox({
+      items,
+      ...comboboxProps,
+    })
+  const {itemToString} = dropdownDefaultProps
 
   return (
     <div>
@@ -72,7 +89,7 @@ const DropdownMultipleCombobox = ({
             {itemToString(selectedItem)}
           </span>
         ))}
-        <div data-testid={dataTestIds.combobox} {...getComboboxProps()}>
+        <div data-testid={dataTestIds.combobox}>
           <input
             data-testid={dataTestIds.input}
             {...getInputProps(getDropdownProps())}
@@ -87,54 +104,14 @@ const DropdownMultipleCombobox = ({
 
 export const renderMultipleCombobox = props => {
   const utils = render(<DropdownMultipleCombobox {...props} />)
-  const label = screen.getByText(/choose an element/i)
-  const menu = screen.getByRole('listbox')
-  const input = screen.getByTestId(dataTestIds.input)
   const rerender = newProps =>
     utils.rerender(<DropdownMultipleCombobox {...newProps} />)
-  const getSelectedItemAtIndex = index =>
-    screen.getByTestId(dataTestIds.selectedItem(index))
-  const getSelectedItems = () =>
-    screen.queryAllByTestId(new RegExp(dataTestIds.selectedItemPrefix))
-  const clickOnSelectedItemAtIndex = index => {
-    fireEvent.click(getSelectedItemAtIndex(index))
-  }
-  const keyDownOnSelectedItemAtIndex = (index, key, options = {}) => {
-    fireEvent.keyDown(getSelectedItemAtIndex(index), {key, ...options})
-  }
-  const focusSelectedItemAtIndex = index => {
-    getSelectedItemAtIndex(index).focus()
-  }
-  const getA11yStatusContainer = () => screen.queryByRole('status')
-  const focusInput = () => {
-    input.focus()
-  }
-  const keyDownOnInput = (key, options = {}) => {
-    if (document.activeElement !== input) {
-      focusInput()
-    }
-
-    fireEvent.keyDown(input, {key, ...options})
-  }
-  const clickOnInput = () => {
-    userEvent.click(input)
-  }
+  const user = userEvent.setup({delay: null})
 
   return {
     ...utils,
-    label,
-    menu,
     rerender,
-    getSelectedItemAtIndex,
-    clickOnSelectedItemAtIndex,
-    keyDownOnSelectedItemAtIndex,
-    focusSelectedItemAtIndex,
-    getSelectedItems,
-    getA11yStatusContainer,
-    input,
-    keyDownOnInput,
-    focusInput,
-    clickOnInput,
+    user,
   }
 }
 

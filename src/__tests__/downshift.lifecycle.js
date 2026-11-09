@@ -1,21 +1,19 @@
 import * as React from 'react'
-import {fireEvent, render, screen} from '@testing-library/react'
+
+import {act, fireEvent, render, screen} from '@testing-library/react'
 import Downshift from '../'
-import setA11yStatus from '../set-a11y-status'
-import * as utils from '../utils'
+import {setStatus, scrollIntoView} from '../utils'
 
 jest.useFakeTimers()
-jest.mock('../set-a11y-status')
-jest.mock('../utils', () => {
-  const realUtils = jest.requireActual('../utils')
-  return {
-    ...realUtils,
-    scrollIntoView: jest.fn(),
-  }
-})
+jest.mock('../utils/scrollIntoView.ts', () => ({
+  scrollIntoView: jest.fn(),
+}))
+jest.mock('../utils/setA11yStatus.ts', () => ({
+  setStatus: jest.fn(),
+}))
 
 afterEach(() => {
-  utils.scrollIntoView.mockReset()
+  scrollIntoView.mockReset()
 })
 
 test('do not set state after unmount', () => {
@@ -124,12 +122,13 @@ test('handles state change for touchevent events', () => {
 })
 
 test('props update causes the a11y status to be updated', () => {
-  setA11yStatus.mockReset()
+  setStatus.mockReset()
   const MyComponent = () => (
     <Downshift isOpen={false}>
       {({getInputProps, getItemProps, isOpen}) => (
         <div>
           <input {...getInputProps()} />
+          {/* eslint-disable-next-line jest/no-conditional-in-test */}
           {isOpen ? <div {...getItemProps({item: 'foo', index: 0})} /> : null}
         </div>
       )}
@@ -138,11 +137,11 @@ test('props update causes the a11y status to be updated', () => {
   const {container, unmount} = render(<MyComponent />)
   render(<MyComponent isOpen={true} />, {container})
   jest.runAllTimers()
-  expect(setA11yStatus).toHaveBeenCalledTimes(1)
+  expect(setStatus).toHaveBeenCalledTimes(1)
   render(<MyComponent isOpen={false} />, {container})
   unmount()
   jest.runAllTimers()
-  expect(setA11yStatus).toHaveBeenCalledTimes(1)
+  expect(setStatus).toHaveBeenCalledTimes(1)
 })
 
 test('inputValue initializes properly if the selectedItem is controlled and set', () => {
@@ -190,9 +189,13 @@ test('the callback is invoked on selected item only if it is a function', () => 
 
   childrenSpy.mockClear()
   callbackSpy.mockClear()
-  renderArg.selectItem('foo', {}, callbackSpy)
+  act(() => {
+    renderArg.selectItem('foo', {}, callbackSpy)
+  })
   expect(callbackSpy).toHaveBeenCalledTimes(1)
-  renderArg.selectItem('foo', {})
+  act(() => {
+    renderArg.selectItem('foo', {})
+  })
 })
 
 test('props update of selectedItem will not update inputValue state', () => {
@@ -201,6 +204,7 @@ test('props update of selectedItem will not update inputValue state', () => {
     onInputValueChange: onInputValueChangeSpy,
     selectedItemChanged: (prevItem, item) => prevItem.id !== item.id,
     selectedItem: {id: '123', value: 'wow'},
+    // eslint-disable-next-line jest/no-conditional-in-test
     itemToString: i => (i ? i.value : ''),
     render: () => null,
   }
@@ -242,9 +246,9 @@ test('controlled highlighted index change scrolls the item into view', () => {
   updateProps({highlightedIndex: 75})
   expect(renderFn).toHaveBeenCalledTimes(1)
 
-  expect(utils.scrollIntoView).toHaveBeenCalledTimes(1)
+  expect(scrollIntoView).toHaveBeenCalledTimes(1)
   const menuDiv = screen.queryByTestId('menu')
-  expect(utils.scrollIntoView).toHaveBeenCalledWith(
+  expect(scrollIntoView).toHaveBeenCalledWith(
     screen.queryByTestId('item-75'),
     menuDiv,
   )

@@ -1,5 +1,36 @@
-import {renderUseSelect} from '../testUtils'
-import {defaultIds} from '../../testUtils'
+import {
+  screen,
+  renderSelect,
+  renderUseSelect,
+  defaultIds,
+  getToggleButton,
+} from './utils'
+
+jest.mock('../../utils', () => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const utils = jest.requireActual('../../utils')
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const hooksUtils = jest.requireActual('../../../utils')
+
+  return {
+    ...utils,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    useGetterPropsCalledChecker: () => hooksUtils.noop,
+  }
+})
+
+// We are using React 18.
+jest.mock('react', () => {
+  return {
+    ...jest.requireActual('react'),
+    useId() {
+      return 'test-id'
+    },
+  }
+})
+
+beforeEach(jest.resetAllMocks)
+afterAll(jest.restoreAllMocks)
 
 describe('getLabelProps', () => {
   test('should have a default id assigned', () => {
@@ -35,5 +66,51 @@ describe('getLabelProps', () => {
     const labelProps = result.current.getLabelProps(props)
 
     expect(labelProps).toEqual(expect.objectContaining({foo: 'bar'}))
+  })
+
+  test('on click moves focus to the toggle button', async () => {
+    const {user} = renderSelect()
+
+    await user.click(
+      screen.getByText('Choose an element:', {selector: 'label'}),
+    )
+
+    expect(getToggleButton()).toHaveFocus()
+  })
+
+  test('event handler onClick is called along with downshift handler', () => {
+    const userOnClick = jest.fn()
+    const mockToggleButton = {focus: jest.fn()}
+    const {result} = renderUseSelect()
+
+    const {onClick} = result.current.getLabelProps({
+      onClick: userOnClick,
+    })
+    const {ref} = result.current.getToggleButtonProps()
+    ref(mockToggleButton)
+
+    onClick({})
+
+    expect(userOnClick).toHaveBeenCalledTimes(1)
+    expect(mockToggleButton.focus).toHaveBeenCalledTimes(1)
+  })
+
+  test("the downshift handler is not called if 'preventDownshiftDefault' is passed in user event", () => {
+    const userOnClick = jest.fn(event => {
+      event.preventDownshiftDefault = true
+    })
+    const mockToggleButton = {focus: jest.fn()}
+    const {result} = renderUseSelect()
+
+    const {onClick} = result.current.getLabelProps({
+      onClick: userOnClick,
+    })
+    const {ref} = result.current.getToggleButtonProps()
+    ref(mockToggleButton)
+
+    onClick({})
+
+    expect(userOnClick).toHaveBeenCalledTimes(1)
+    expect(mockToggleButton.focus).not.toHaveBeenCalled()
   })
 })

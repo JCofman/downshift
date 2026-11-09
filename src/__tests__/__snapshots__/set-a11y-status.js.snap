@@ -1,13 +1,24 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`does add anything for an empty string 1`] = `
-<div
-  aria-live=polite
-  aria-relevant=additions text
-  id=a11y-status-message
-  role=status
-  style=border: 0px; height: 1px; margin: -1px; overflow: hidden; padding: 0px; position: absolute; width: 1px;
-/>
+exports[`creates new status div if there is none 1`] = `
+[
+  [
+    id,
+    a11y-status-message,
+  ],
+  [
+    role,
+    status,
+  ],
+  [
+    aria-live,
+    polite,
+  ],
+  [
+    aria-relevant,
+    additions text,
+  ],
+]
 `;
 
 exports[`escapes HTML 1`] = `

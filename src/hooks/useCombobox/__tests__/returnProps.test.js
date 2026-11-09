@@ -1,9 +1,32 @@
-import {act} from '@testing-library/react-hooks'
-
-import {renderUseCombobox} from '../testUtils'
-import {items} from '../../testUtils'
 import * as stateChangeTypes from '../stateChangeTypes'
 import useCombobox from '..'
+import {act, renderUseCombobox, items} from './utils'
+
+jest.mock('../../utils', () => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const utils = jest.requireActual('../../utils')
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const hooksUtils = jest.requireActual('../../../utils')
+
+  return {
+    ...utils,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    useGetterPropsCalledChecker: () => hooksUtils.noop,
+  }
+})
+
+// We are using React 18.
+jest.mock('react', () => {
+  return {
+    ...jest.requireActual('react'),
+    useId() {
+      return 'test-id'
+    },
+  }
+})
+
+beforeEach(jest.resetAllMocks)
+afterAll(jest.restoreAllMocks)
 
 describe('returnProps', () => {
   test('should have stateChangeTypes attached to hook', () => {
@@ -19,7 +42,6 @@ describe('returnProps', () => {
       expect(result.current.getLabelProps).toBeInstanceOf(Function)
       expect(result.current.getToggleButtonProps).toBeInstanceOf(Function)
       expect(result.current.getInputProps).toBeInstanceOf(Function)
-      expect(result.current.getComboboxProps).toBeInstanceOf(Function)
     })
   })
 
@@ -89,6 +111,22 @@ describe('returnProps', () => {
       })
 
       expect(result.current.highlightedIndex).toBe(2)
+    })
+
+    test('setHighlightedIndex does not set highlightedIndex if item is disabled', () => {
+      const highlightedIndex = 2
+      const {result} = renderUseCombobox({
+        initialIsOpen: true,
+        isItemDisabled(_item, index) {
+          return index === highlightedIndex
+        },
+      })
+
+      act(() => {
+        result.current.setHighlightedIndex(highlightedIndex)
+      })
+
+      expect(result.current.highlightedIndex).toBe(-1)
     })
 
     test('setInputValue sets inputValue', () => {
@@ -163,6 +201,29 @@ describe('returnProps', () => {
       )
       expect(result.current.isOpen).toBe(props.defaultIsOpen)
       expect(result.current.inputValue).toBe(props.defaultInputValue)
+    })
+
+    test('reset does not set the defaultHighlightedIndex if item is disabled', () => {
+      const props = {
+        defaultIsOpen: false,
+        defaultHighlightedIndex: 3,
+        defaultSelectedItem: items[2],
+        isItemDisabled(_item, index) {
+          return index === 3
+        },
+      }
+      const {result} = renderUseCombobox(props)
+
+      act(() => {
+        result.current.openMenu()
+        result.current.selectItem(items[4])
+        result.current.setHighlightedIndex(1)
+        result.current.reset()
+      })
+
+      expect(result.current.selectedItem).toBe(props.defaultSelectedItem)
+      expect(result.current.highlightedIndex).toBe(-1)
+      expect(result.current.isOpen).toBe(props.defaultIsOpen)
     })
   })
 

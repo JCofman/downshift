@@ -2,15 +2,18 @@
   "name": "downshift",
   "version": "0.0.0-semantically-released",
   "description": "🏎 A set of primitives to build simple, flexible, WAI-ARIA compliant React autocomplete, combobox or select dropdown components.",
-  "main": "dist/downshift.cjs.js",
-  "react-native": "dist/downshift.native.cjs.js",
-  "module": "dist/downshift.esm.js",
+  "main": "dist/downshift.cjs.cjs",
+  "react-native": "dist/downshift.native.cjs.cjs",
+  "module": "dist/downshift.esm.mjs",
   "typings": "typings/index.d.ts",
+  "types": "typings/index.d.ts",
   "sideEffects": false,
+  "browserslist": [],
   "scripts": {
-    "build": "npm run build:web --silent && npm run build:native --silent",
+    "build": "npm run build:web --silent && npm run build:native --silent && npm run build:nativeWeb --silent",
     "build:web": "kcd-scripts build --bundle --p-react --no-clean --size-snapshot",
     "build:native": "cross-env BUILD_REACT_NATIVE=true BUILD_FILENAME_SUFFIX=.native kcd-scripts build --bundle cjs --no-clean",
+    "build:nativeWeb": "cross-env BUILD_REACT_NATIVE_WEB=true BUILD_FILENAME_SUFFIX=.nativeweb kcd-scripts build --bundle cjs --no-clean",
     "lint": "kcd-scripts lint",
     "test": "kcd-scripts test",
     "test:cover": "kcd-scripts test --coverage",
@@ -21,23 +24,30 @@
     "test:flow:coverage": "flow-coverage-report",
     "test:build": "jest --config other/misc-tests/jest.config.js",
     "// FIXME: test:build": "jest --projects other/misc-tests other/react-native",
-    "test:cypress:dev": "npm-run-all --parallel --race docs:dev cy:open",
-    "pretest:cypress": "npm run docs:build --silent",
-    "test:cypress": "start-server-and-test docs:serve http://localhost:6006 cy:run",
-    "cy:run": "cypress run",
-    "cy:open": "cypress open",
+    "test:e2e:dev": "playwright test --ui",
+    "pretest:e2e": "npm run docs:build --silent",
+    "test:e2e": "playwright test",
+    "pw:run": "playwright test",
+    "pw:open": "playwright test --ui",
     "build-and-test": "npm run build -s && npm run test:build -s",
-    "docs:build": "docz build",
-    "postdocs:build": "cpy \"**/*\" ../../.docz/dist --cwd=\"other/public\" --parents",
-    "docs:dev": "docz dev",
-    "docs:serve": "serve ./.docz/dist --listen 6006 --single",
+    "docs:build": "docusaurus build",
+    "docs:dev": "docusaurus start",
+    "docs:serve": "docusaurus serve --port 6006",
+    "docs:clear": "docusaurus clear",
     "setup": "npm install && npm run validate",
-    "validate": "kcd-scripts validate lint,build-and-test,test:cover,test:ts,test:flow:coverage,test:ssr,test:cypress"
+    "validate": "kcd-scripts validate lint,build-and-test,test:cover,test:ts,test:ssr,test:e2e"
   },
   "husky": {
     "hooks": {
       "pre-commit": "kcd-scripts pre-commit"
     }
+  },
+  "lint-staged": {
+    "*.+(js|jsx|json|yml|yaml|css|less|scss|ts|tsx|md|gql|graphql|mdx|vue)": [
+      "kcd-scripts format",
+      "kcd-scripts lint",
+      "kcd-scripts test --findRelatedTests --passWithNoTests"
+    ]
   },
   "files": [
     "dist",
@@ -45,6 +55,18 @@
     "preact",
     "flow-typed"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/downshift.esm.mjs",
+      "require": "./dist/downshift.cjs.cjs",
+      "types": "./typings/index.d.ts",
+      "default": "./dist/downshift.esm.mjs"
+    },
+    "./react-native": {
+      "require": "./dist/downshift.native.cjs.cjs",
+      "types": "./typings/index.d.ts"
+    }
+  },
   "keywords": [
     "enhanced input",
     "react",
@@ -66,56 +88,82 @@
     "react": ">=16.12.0"
   },
   "dependencies": {
-    "@babel/runtime": "^7.14.8",
-    "compute-scroll-into-view": "^1.0.17",
-    "prop-types": "^15.7.2",
-    "react-is": "^17.0.2",
-    "tslib": "^2.3.0"
+    "@babel/runtime": "^7.28.6",
+    "compute-scroll-into-view": "^3.1.1",
+    "prop-types": "^15.8.1",
+    "react-is": "^18.2.0",
+    "tslib": "^2.8.1"
   },
   "devDependencies": {
-    "@babel/helpers": "^7.14.8",
-    "@rollup/plugin-babel": "^5.3.0",
-    "@rollup/plugin-commonjs": "^20.0.0",
-    "@rollup/plugin-typescript": "^8.2.5",
-    "@testing-library/cypress": "^8.0.0",
-    "@testing-library/dom": "^8.1.0",
-    "@testing-library/jest-dom": "^5.14.1",
-    "@testing-library/preact": "^2.0.1",
-    "@testing-library/react": "^12.0.0",
-    "@testing-library/react-hooks": "^7.0.1",
-    "@testing-library/user-event": "^13.2.1",
-    "@types/jest": "^26.0.24",
-    "@types/react": "^17.0.15",
-    "@typescript-eslint/eslint-plugin": "^4.28.5",
-    "@typescript-eslint/parser": "^4.28.5",
+    "@babel/helpers": "^7.28.6",
+    "@docusaurus/babel": "3.10.1",
+    "@docusaurus/core": "3.10.1",
+    "@docusaurus/module-type-aliases": "3.10.1",
+    "@docusaurus/preset-classic": "3.10.1",
+    "@mdx-js/react": "^3.0.1",
+    "@playwright/test": "^1.60.0",
+    "@rollup/plugin-babel": "^6.1.0",
+    "@rollup/plugin-commonjs": "^29.0.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/preact": "^3.2.4",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
+    "@types/prop-types": "^15.7.15",
+    "@types/react": "^18.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
     "babel-plugin-macros": "^3.1.0",
     "babel-plugin-no-side-effect-class-properties": "0.0.7",
     "babel-preset-react-native": "^4.0.1",
     "buble": "^0.20.0",
-    "cpy-cli": "^3.1.1",
-    "cross-env": "^7.0.3",
-    "cypress": "^8.1.0",
-    "docz": "^2.3.1",
-    "docz-theme-default": "^1.2.0",
-    "eslint": "^7.32.0",
-    "eslint-plugin-cypress": "^2.11.3",
-    "eslint-plugin-react": "7.24.0",
-    "flow-bin": "^0.156.0",
+    "cpy-cli": "^6.0.0",
+    "cross-env": "^10.1.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "flow-bin": "^0.299.0",
     "flow-coverage-report": "^0.8.0",
-    "get-pkg-repo": "4.1.1",
-    "kcd-scripts": "^11.2.0",
+    "get-pkg-repo": "5.0.0",
+    "kcd-scripts": "^17.0.0",
+    "node-polyfill-webpack-plugin": "^4.1.0",
     "npm-run-all": "^4.1.5",
-    "preact": "^10.5.14",
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2",
-    "react-native": "^0.64.2",
-    "react-test-renderer": "^17.0.2",
-    "serve": "^12.0.0",
-    "start-server-and-test": "^1.13.1",
-    "typescript": "^4.3.5"
+    "preact": "^10.28.2",
+    "prism-react-renderer": "^2.4.1",
+    "react": "^18.3.1",
+    "react-compiler-runtime": "^1.0.0",
+    "react-dom": "^18.3.1",
+    "react-is": "^18.3.1",
+    "react-native": "^0.76.0",
+    "react-test-renderer": "^18.3.1",
+    "serve": "^14.2.5",
+    "start-server-and-test": "^2.1.3",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "eslint-plugin-react-hooks": "^7.1.1"
   },
   "eslintConfig": {
+    "parserOptions": {
+      "ecmaVersion": 2023,
+      "project": [
+        "./tsconfig.json",
+        "./docusaurus/tsconfig.json",
+        "./test/tsconfig.json",
+        "./e2e/tsconfig.json"
+      ],
+      "sourceType": "module"
+    },
     "settings": {
+      "import/no-unresolved": [
+        2,
+        {
+          "ignore": [
+            "^@theme"
+          ]
+        }
+      ],
       "import/resolver": {
         "node": {
           "extensions": [
@@ -129,6 +177,7 @@
     },
     "extends": "./node_modules/kcd-scripts/eslint.js",
     "rules": {
+      "react-hooks/refs": "error",
       "react/jsx-indent": "off",
       "react/prop-types": "off",
       "max-lines-per-function": "off",
@@ -143,11 +192,16 @@
     "overrides": [
       {
         "files": [
-          "cypress/**/*.js"
+          "e2e/**/*.ts"
         ],
         "rules": {
           "testing-library/prefer-screen-queries": "off",
-          "testing-library/await-async-query": "off"
+          "import/no-extraneous-dependencies": [
+            "error",
+            {
+              "devDependencies": true
+            }
+          ]
         }
       }
     ]
@@ -156,9 +210,12 @@
     "node_modules",
     "coverage",
     "dist",
-    ".docz",
+    ".docusaurus",
+    "build",
+    "test",
     "typings",
-    "test"
+    "playwright-report",
+    "test-results"
   ],
   "repository": {
     "type": "git",

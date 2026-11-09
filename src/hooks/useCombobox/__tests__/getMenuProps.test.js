@@ -1,10 +1,43 @@
-import {act, renderHook} from '@testing-library/react-hooks'
 import {noop} from '../../../utils'
-import {renderCombobox, renderUseCombobox} from '../testUtils'
-import {defaultIds, items} from '../../testUtils'
-// eslint-disable-next-line import/default
 import utils from '../../utils'
 import useCombobox from '..'
+import {
+  act,
+  renderHook,
+  getInput,
+  renderCombobox,
+  renderUseCombobox,
+  defaultIds,
+  items,
+  mouseLeaveItemAtIndex,
+  mouseMoveItemAtIndex,
+} from './utils'
+
+jest.mock('../../utils', () => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const actualUtils = jest.requireActual('../../utils')
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const hooksUtils = jest.requireActual('../../../utils')
+
+  return {
+    ...actualUtils,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    useGetterPropsCalledChecker: () => hooksUtils.noop,
+  }
+})
+
+// We are using React 18.
+jest.mock('react', () => {
+  return {
+    ...jest.requireActual('react'),
+    useId() {
+      return 'test-id'
+    },
+  }
+})
+
+beforeEach(jest.resetAllMocks)
+afterAll(jest.restoreAllMocks)
 
 describe('getMenuProps', () => {
   describe('hook props', () => {
@@ -47,6 +80,15 @@ describe('getMenuProps', () => {
       const menuProps = result.current.getMenuProps()
 
       expect(menuProps.role).toEqual('listbox')
+    })
+
+    test("do not assign 'aria-labelledby' if it has aria-label", () => {
+      const ariaLabel = 'not so fast'
+      const {result} = renderUseCombobox()
+      const menuProps = result.current.getMenuProps({'aria-label': ariaLabel})
+
+      expect(menuProps['aria-labelledby']).toBeUndefined()
+      expect(menuProps['aria-label']).toBe(ariaLabel)
     })
   })
 
@@ -104,15 +146,17 @@ describe('getMenuProps', () => {
   describe('event handlers', () => {
     describe('on key down', () => {
       describe('on mouse leave', () => {
-        test('the highlightedIndex should be reset', () => {
-          const {mouseLeaveMenu, input} = renderCombobox({
+        test('the highlightedIndex should be reset', async () => {
+          const initialHighlightedIndex = 2
+          const {user} = renderCombobox({
             initialIsOpen: true,
-            initialHighlightedIndex: 2,
+            initialHighlightedIndex,
           })
 
-          mouseLeaveMenu()
+          await mouseMoveItemAtIndex(user, initialHighlightedIndex)
+          await mouseLeaveItemAtIndex(user, initialHighlightedIndex)
 
-          expect(input).not.toHaveAttribute('aria-activedescendant')
+          expect(getInput()).toHaveAttribute('aria-activedescendant', '')
         })
       })
     })
@@ -120,6 +164,7 @@ describe('getMenuProps', () => {
 
   describe('non production errors', () => {
     beforeEach(() => {
+      // usally disabled by test utils.
       const {useGetterPropsCalledChecker} = jest.requireActual('../../utils')
       jest
         .spyOn(utils, 'useGetterPropsCalledChecker')
@@ -129,9 +174,8 @@ describe('getMenuProps', () => {
 
     test('will be displayed if getMenuProps is not called', () => {
       renderHook(() => {
-        const {getInputProps, getComboboxProps} = useCombobox({items})
+        const {getInputProps} = useCombobox({items})
         getInputProps({}, {suppressRefError: true})
-        getComboboxProps({}, {suppressRefError: true})
       })
 
       // eslint-disable-next-line no-console
@@ -143,12 +187,12 @@ describe('getMenuProps', () => {
     test('will not be displayed if getMenuProps is not called on subsequent renders', () => {
       let firstRender = true
       const {rerender} = renderHook(() => {
-        const {getInputProps, getMenuProps, getComboboxProps} = useCombobox({
+        const {getInputProps, getMenuProps} = useCombobox({
           items,
         })
-        getComboboxProps({}, {suppressRefError: true})
         getInputProps({}, {suppressRefError: true})
 
+        // eslint-disable-next-line jest/no-if, jest/no-conditional-in-test
         if (firstRender) {
           firstRender = false
           getMenuProps({}, {suppressRefError: true})
@@ -163,12 +207,11 @@ describe('getMenuProps', () => {
 
     test('will be displayed if element ref is not set and suppressRefError is false', () => {
       renderHook(() => {
-        const {getInputProps, getMenuProps, getComboboxProps} = useCombobox({
+        const {getInputProps, getMenuProps} = useCombobox({
           items,
         })
 
         getInputProps({}, {suppressRefError: true})
-        getComboboxProps({}, {suppressRefError: true})
         getMenuProps()
       })
 
@@ -178,17 +221,29 @@ describe('getMenuProps', () => {
       )
     })
 
+    test('will not be displayed if element ref is not set and suppressRefError is true', () => {
+      renderHook(() => {
+        const {getInputProps, getMenuProps} = useCombobox({
+          items,
+        })
+
+        getMenuProps({}, {suppressRefError: true})
+        getInputProps({}, {suppressRefError: true})
+      })
+
+      expect(console.error).not.toHaveBeenCalled()
+    })
+
     test('will not be displayed if called with a correct ref', () => {
       const refFn = jest.fn()
       const menuNode = {}
 
       renderHook(() => {
-        const {getInputProps, getMenuProps, getComboboxProps} = useCombobox({
+        const {getInputProps, getMenuProps} = useCombobox({
           items,
         })
 
         getInputProps({}, {suppressRefError: true})
-        getComboboxProps({}, {suppressRefError: true})
 
         const {ref} = getMenuProps({
           ref: refFn,

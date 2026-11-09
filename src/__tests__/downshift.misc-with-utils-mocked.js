@@ -7,12 +7,15 @@ import Downshift from '../'
 import {scrollIntoView} from '../utils'
 
 jest.useFakeTimers()
-jest.mock('../utils')
+jest.mock('../utils/scrollIntoView.ts', () => ({
+  scrollIntoView: jest.fn(),
+}))
 
 test('does not scroll from an onMouseMove event', () => {
   class HighlightedIndexController extends React.Component {
     state = {highlightedIndex: 10}
     handleStateChange = changes => {
+      // eslint-disable-next-line jest/no-conditional-in-test
       if (changes.hasOwnProperty('highlightedIndex')) {
         this.setState({highlightedIndex: changes.highlightedIndex})
       }

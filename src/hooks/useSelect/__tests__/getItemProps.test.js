@@ -1,13 +1,52 @@
-import {act} from '@testing-library/react-hooks'
-import {renderUseSelect, renderSelect} from '../testUtils'
-import {items, defaultIds} from '../../testUtils'
+import useSelect from '..'
+import {
+  act,
+  renderHook,
+  renderUseSelect,
+  renderSelect,
+  mouseMoveItemAtIndex,
+  getItemAtIndex,
+  getToggleButton,
+  clickOnItemAtIndex,
+  getItems,
+  keyDownOnToggleButton,
+  clickOnToggleButton,
+  items,
+  defaultIds,
+} from './utils'
+
+jest.mock('../../utils', () => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const actualUtils = jest.requireActual('../../utils')
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const hooksUtils = jest.requireActual('../../../utils')
+
+  return {
+    ...actualUtils,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    useGetterPropsCalledChecker: () => hooksUtils.noop,
+  }
+})
+
+// We are using React 18.
+jest.mock('react', () => {
+  return {
+    ...jest.requireActual('react'),
+    useId() {
+      return 'test-id'
+    },
+  }
+})
+
+beforeEach(jest.resetAllMocks)
+afterAll(jest.restoreAllMocks)
 
 describe('getItemProps', () => {
   test('throws error if no index or item has been passed', () => {
     const {result} = renderUseSelect()
 
-    expect(result.current.getItemProps).toThrowError(
-      'Pass either item or item index in getItemProps!',
+    expect(result.current.getItemProps).toThrow(
+      'Pass either item or index to getItemProps!',
     )
   })
 
@@ -33,31 +72,38 @@ describe('getItemProps', () => {
       expect(result.current.getItemProps({index: 0}).id).toEqual(getItemId(0))
     })
 
-    test("assign 'true' to aria-selected if item is highlighted", () => {
-      const {result} = renderUseSelect({highlightedIndex: 2})
-      const itemProps = result.current.getItemProps({index: 2})
+    test("assign 'true' to aria-selected if item is selected", () => {
+      const {result} = renderUseSelect({
+        highlightedIndex: 2,
+        selectedItem: items[3],
+      })
+      const item2Props = result.current.getItemProps({index: 2})
+      const item3Props = result.current.getItemProps({index: 3})
 
-      expect(itemProps['aria-selected']).toEqual('true')
+      expect(item2Props['aria-selected']).toEqual(false)
+      expect(item3Props['aria-selected']).toEqual(true)
     })
 
     test("assign 'false' to aria-selected if item is not highlighted", () => {
       const {result} = renderUseSelect({highlightedIndex: 1})
       const itemProps = result.current.getItemProps({index: 2})
 
-      expect(itemProps['aria-selected']).toEqual('false')
+      expect(itemProps['aria-selected']).toEqual(false)
     })
 
-    test('omit event handlers when disabled', () => {
-      const {result} = renderUseSelect()
+    test('omit click handler when disabled', () => {
+      const {result} = renderUseSelect({
+        isItemDisabled(_item, index) {
+          return index === 0
+        },
+      })
       const itemProps = result.current.getItemProps({
         index: 0,
-        disabled: true,
       })
 
-      expect(itemProps.onMouseMove).toBeUndefined()
+      expect(itemProps.onMouseMove).toBeDefined()
       expect(itemProps.onClick).toBeUndefined()
-      // eslint-disable-next-line jest-dom/prefer-enabled-disabled
-      expect(itemProps.disabled).toBe(true)
+      expect(itemProps['aria-disabled']).toBe(true)
     })
   })
 
@@ -105,6 +151,44 @@ describe('getItemProps', () => {
       expect(result.current.highlightedIndex).toBe(1)
     })
 
+    test('event handler onMouseDown is called along with downshift handler', () => {
+      const userOnMouseDown = jest.fn()
+      const preventDefault = jest.fn()
+      const {result} = renderUseSelect({initialIsOpen: true})
+
+      act(() => {
+        const {onMouseDown} = result.current.getItemProps({
+          index: 1,
+          onMouseDown: userOnMouseDown,
+        })
+
+        onMouseDown({preventDefault})
+      })
+
+      expect(userOnMouseDown).toHaveBeenCalledTimes(1)
+      expect(preventDefault).toHaveBeenCalledTimes(1)
+    })
+
+    test("event handler onMouseDown is called without downshift handler if 'preventDownshiftDefault' is passed in user event", () => {
+      const userOnMouseDown = jest.fn(event => {
+        event.preventDownshiftDefault = true
+      })
+      const preventDefault = jest.fn()
+      const {result} = renderUseSelect({initialIsOpen: true})
+
+      act(() => {
+        const {onMouseDown} = result.current.getItemProps({
+          index: 0,
+          onMouseDown: userOnMouseDown,
+        })
+
+        onMouseDown({preventDefault})
+      })
+
+      expect(userOnMouseDown).toHaveBeenCalledTimes(1)
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+
     test("event handler onClick is called without downshift handler if 'preventDownshiftDefault' is passed in user event", () => {
       const userOnClick = jest.fn(event => {
         event.preventDownshiftDefault = true
@@ -147,109 +231,230 @@ describe('getItemProps', () => {
 
   describe('event handlers', () => {
     describe('on mouse over', () => {
-      test('it highlights the item', () => {
+      test('it highlights the item', async () => {
         const index = 1
-        const {mouseMoveItemAtIndex, menu, getItemAtIndex} = renderSelect({
+
+        const {user} = renderSelect({
           isOpen: true,
         })
 
-        mouseMoveItemAtIndex(index)
+        await mouseMoveItemAtIndex(user, index)
 
-        expect(menu).toHaveAttribute(
+        expect(getToggleButton()).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(index),
         )
-        expect(getItemAtIndex(index)).toHaveAttribute('aria-selected', 'true')
       })
 
-      test('it removes highlight from the previously highlighted item', () => {
+      test('it highlights successive items item', async () => {
+        const {user} = renderSelect({
+          isOpen: true,
+        })
+
+        await mouseMoveItemAtIndex(user, 3)
+
+        expect(getToggleButton()).toHaveAttribute(
+          'aria-activedescendant',
+          defaultIds.getItemId(3),
+        )
+
+        await mouseMoveItemAtIndex(user, 2)
+
+        expect(getToggleButton()).toHaveAttribute(
+          'aria-activedescendant',
+          defaultIds.getItemId(2),
+        )
+
+        await mouseMoveItemAtIndex(user, 1)
+
+        expect(getToggleButton()).toHaveAttribute(
+          'aria-activedescendant',
+          defaultIds.getItemId(1),
+        )
+      })
+
+      test('it removes highlight from the previously highlighted item', async () => {
         const index = 1
         const previousIndex = 2
-        const {mouseMoveItemAtIndex, menu, getItemAtIndex} = renderSelect({
+        const {user} = renderSelect({
           isOpen: true,
           initialHighlightedIndex: previousIndex,
         })
+        const toggleButton = getToggleButton()
 
-        mouseMoveItemAtIndex(index)
+        await mouseMoveItemAtIndex(user, index)
 
-        expect(menu).not.toHaveAttribute(
+        expect(toggleButton).not.toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(previousIndex),
         )
-        expect(getItemAtIndex(previousIndex)).toHaveAttribute(
-          'aria-selected',
-          'false',
-        )
-        expect(menu).toHaveAttribute(
+        expect(toggleButton).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(index),
         )
-        expect(getItemAtIndex(index)).toHaveAttribute('aria-selected', 'true')
       })
 
-      it('keeps highlight on multiple events', () => {
+      it('keeps highlight on multiple events', async () => {
         const index = 1
-        const {mouseMoveItemAtIndex, menu, getItemAtIndex} = renderSelect({
+        const {user} = renderSelect({
           isOpen: true,
         })
 
-        mouseMoveItemAtIndex(index)
-        mouseMoveItemAtIndex(index)
-        mouseMoveItemAtIndex(index)
+        await mouseMoveItemAtIndex(user, index)
+        await mouseMoveItemAtIndex(user, index)
+        await mouseMoveItemAtIndex(user, index)
 
-        expect(menu).toHaveAttribute(
+        expect(getToggleButton()).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(index),
         )
-        expect(getItemAtIndex(index)).toHaveAttribute('aria-selected', 'true')
+      })
+
+      it('removes highlight from previous item even if current item is disabled', async () => {
+        const disabledIndex = 1
+        const highlightedIndex = 2
+
+        const {user} = renderSelect({
+          items,
+          isOpen: true,
+          isItemDisabled(_item, index) {
+            return index === disabledIndex
+          },
+        })
+        const toggleButton = getToggleButton()
+
+        await mouseMoveItemAtIndex(user, highlightedIndex)
+
+        expect(toggleButton).toHaveAttribute(
+          'aria-activedescendant',
+          defaultIds.getItemId(highlightedIndex),
+        )
+
+        await mouseMoveItemAtIndex(user, disabledIndex)
+        expect(toggleButton).toHaveAttribute('aria-activedescendant', '')
+      })
+
+      // Test that we don't call the mouse move handler on mobile.
+      test('does not set highlight the item if a touch event ocurred', async () => {
+        let touchEndHandler
+        const index = 1
+
+        const {user} = renderSelect({
+          isOpen: true,
+          environment: {
+            addEventListener: (name, handler) => {
+              // eslint-disable-next-line jest/no-conditional-in-test
+              if (name === 'touchend') {
+                touchEndHandler = handler
+              }
+            },
+            removeEventListener: () => {},
+            document: {
+              createElement: () => {},
+              getElementById: () => {},
+              activeElement: () => {},
+              body: {},
+            },
+            Node: () => {},
+          },
+        })
+
+        act(() => touchEndHandler({target: null}))
+        await mouseMoveItemAtIndex(user, index)
+
+        expect(getToggleButton()).toHaveAttribute('aria-activedescendant', '')
       })
     })
 
     describe('on click', () => {
-      test('it selects the item', () => {
+      test('it selects the item', async () => {
         const index = 1
-        const {clickOnItemAtIndex, toggleButton, getItems} = renderSelect({
+        const {user} = renderSelect({
           initialIsOpen: true,
+          defaultHighlightedIndex: 3,
         })
 
-        clickOnItemAtIndex(index)
+        await clickOnItemAtIndex(user, index)
 
         expect(getItems()).toHaveLength(0)
-        expect(toggleButton).toHaveTextContent(items[index])
+        expect(getToggleButton()).toHaveTextContent(items[index])
+
+        await clickOnToggleButton(user)
+
+        expect(getItemAtIndex(index)).toHaveAttribute('aria-selected', 'true')
       })
 
-      test('it selects the item and resets to user defined defaults', () => {
+      test('it selects the item and resets to user defined defaults', async () => {
         const index = 1
-        const {clickOnItemAtIndex, menu, toggleButton, getItems} = renderSelect(
-          {
-            defaultIsOpen: true,
-            defaultHighlightedIndex: 2,
-          },
-        )
+        const {user} = renderSelect({
+          defaultIsOpen: true,
+          defaultHighlightedIndex: 2,
+        })
+        const toggleButton = getToggleButton()
 
-        clickOnItemAtIndex(index)
+        await clickOnItemAtIndex(user, index)
 
         expect(toggleButton).toHaveTextContent(items[index])
         expect(getItems()).toHaveLength(items.length)
-        expect(menu).toHaveAttribute(
+        expect(toggleButton).toHaveAttribute(
           'aria-activedescendant',
           defaultIds.getItemId(2),
         )
+      })
+
+      test('it selects the item and resets to user defined defaults, but considers disabled status for an item', async () => {
+        const index = 1
+        const defaultHighlightedIndex = 2
+        const {user} = renderSelect({
+          defaultIsOpen: true,
+          defaultHighlightedIndex,
+          isItemDisabled(_item, idx) {
+            return idx === defaultHighlightedIndex
+          },
+        })
+        const toggleButton = getToggleButton()
+
+        await clickOnItemAtIndex(user, index)
+
+        expect(toggleButton).toHaveTextContent(items[index])
+        expect(getItems()).toHaveLength(items.length)
+        expect(toggleButton).toHaveAttribute('aria-activedescendant', '')
       })
     })
   })
 
   describe('scrolling', () => {
-    test('is performed by the menu to the item if highlighted and not 100% visible', () => {
+    test('is performed by the menu to the item if highlighted and not 100% visible', async () => {
       const scrollIntoView = jest.fn()
-      const {keyDownOnMenu} = renderSelect({
+      const {user} = renderSelect({
         initialIsOpen: true,
         scrollIntoView,
       })
 
-      keyDownOnMenu('End')
+      await keyDownOnToggleButton(user, '{End}')
 
       expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('non production errors', () => {
+    beforeAll(() => {
+      jest.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    afterAll(() => {
+      jest.restoreAllMocks()
+    })
+
+    test('will be displayed if getInputProps is not called', () => {
+      renderHook(() => {
+        const {getItemProps} = useSelect({items})
+        getItemProps({disabled: true, index: 9})
+      })
+
+      expect(console.warn.mock.calls[0][0]).toMatchInlineSnapshot(
+        `Passing "disabled" as an argument to getItemProps is not supported anymore. Please use the isItemDisabled prop from useSelect.`,
+      )
     })
   })
 })

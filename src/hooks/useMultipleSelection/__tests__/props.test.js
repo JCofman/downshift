@@ -1,7 +1,20 @@
-import {act, renderHook} from '@testing-library/react-hooks'
+import {act, renderHook} from '@testing-library/react'
 import * as stateChangeTypes from '../stateChangeTypes'
-import {renderUseMultipleSelection, renderMultipleCombobox} from '../testUtils'
-import {items} from '../../testUtils'
+import {
+  renderUseMultipleSelection,
+  renderMultipleCombobox,
+  keyDownOnSelectedItemAtIndex,
+  getSelectedItems,
+  focusSelectedItemAtIndex,
+  clickOnSelectedItemAtIndex,
+  getSelectedItemAtIndex,
+  clickOnInput,
+  getA11yStatusContainer,
+  getInput,
+  items,
+  keyDownOnInput,
+  waitForDebouncedA11yStatusUpdate,
+} from '../testUtils'
 import useMultipleSelection from '..'
 
 jest.useFakeTimers()
@@ -20,106 +33,178 @@ describe('props', () => {
   })
 
   describe('selectedItems', () => {
-    afterEach(() => {
-      act(() => jest.runAllTimers())
-    })
-
-    test('passed as objects should work with custom itemToString', () => {
-      const {
-        keyDownOnSelectedItemAtIndex,
-        getA11yStatusContainer,
-      } = renderMultipleCombobox({
-        multipleSelectionProps: {
-          initialSelectedItems: [{str: 'aaa'}, {str: 'bbb'}],
-          initialActiveIndex: 0,
-          itemToString: item => item.str,
-        },
-      })
-
-      keyDownOnSelectedItemAtIndex(0, 'Delete')
-
-      expect(getA11yStatusContainer()).toHaveTextContent(
-        'aaa has been removed.',
-      )
-    })
-
-    test('controls the state property if passed', () => {
+    test('control the state property if passed', async () => {
       const inputItems = [items[0], items[1]]
-      const {
-        keyDownOnSelectedItemAtIndex,
-        getSelectedItems,
-      } = renderMultipleCombobox({
+
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           selectedItems: inputItems,
           initialActiveIndex: 0,
         },
       })
 
-      keyDownOnSelectedItemAtIndex(0, 'Delete')
+      await keyDownOnSelectedItemAtIndex(user, 0, '{Delete}')
 
       expect(getSelectedItems()).toHaveLength(2)
     })
   })
 
-  describe('getA11yRemovalMessage', () => {
+  describe('getA11yStatusMessage', () => {
+    beforeEach(() => jest.useFakeTimers())
     afterEach(() => {
       act(() => jest.runAllTimers())
     })
+    afterAll(() => jest.useRealTimers())
 
-    test('is called with object that contains specific props', () => {
-      const getA11yRemovalMessage = jest.fn()
-      const itemToString = item => item.str
-      const initialSelectedItems = [{str: 'aaa'}, {str: 'bbb'}]
-      const {keyDownOnSelectedItemAtIndex} = renderMultipleCombobox({
+    test('adds no status message element to the DOM if not passed', async () => {
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
-          initialSelectedItems,
+          selectedItems: [items[0], items[1]],
           initialActiveIndex: 0,
-          itemToString,
-          getA11yRemovalMessage,
-          activeIndex: 0,
         },
       })
 
-      keyDownOnSelectedItemAtIndex(0, 'Delete')
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
+      waitForDebouncedA11yStatusUpdate()
 
-      expect(getA11yRemovalMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          itemToString,
-          resultCount: 1,
-          removedSelectedItem: initialSelectedItems[0],
-          activeIndex: 0,
-          activeSelectedItem: initialSelectedItems[1],
-        }),
-      )
+      expect(getA11yStatusContainer()).not.toBeInTheDocument()
     })
 
-    test('is replaced with the user provided one', () => {
-      const initialSelectedItems = [items[0], items[1]]
-      const {
-        keyDownOnSelectedItemAtIndex,
-        getA11yStatusContainer,
-      } = renderMultipleCombobox({
+    test('calls the function only on state changes', async () => {
+      const getA11yStatusMessage = jest.fn()
+      const selectedItems = [items[0], items[1]]
+      const multipleSelectionProps = {
+        selectedItems,
+        initialActiveIndex: 1,
+        getA11yStatusMessage,
+      }
+      const {rerender, user} = renderMultipleCombobox({
+        multipleSelectionProps,
+      })
+
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
+      waitForDebouncedA11yStatusUpdate()
+
+      expect(getA11yStatusMessage).toHaveBeenCalledWith({
+        activeIndex: 0,
+        selectedItems,
+      })
+      expect(getA11yStatusMessage).toHaveBeenCalledTimes(1)
+
+      getA11yStatusMessage.mockClear()
+      rerender({
+        multipleSelectionProps: {...multipleSelectionProps, activeIndex: 0},
+      })
+
+      expect(getA11yStatusMessage).not.toHaveBeenCalled()
+    })
+
+    test('adds a status message element with the text returned', async () => {
+      const a11yStatusMessage1 = 'to the left to the left'
+      const a11yStatusMessage2 = 'to the right?'
+      const selectedItems = [items[0], items[1]]
+      const getA11yStatusMessage = jest
+        .fn()
+        .mockReturnValueOnce(a11yStatusMessage1)
+        .mockReturnValueOnce(a11yStatusMessage2)
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
-          initialSelectedItems,
-          initialActiveIndex: 0,
-          getA11yRemovalMessage: () => 'custom message',
+          selectedItems,
+          initialActiveIndex: 1,
+          getA11yStatusMessage,
         },
       })
 
-      keyDownOnSelectedItemAtIndex(0, 'Delete')
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
+      waitForDebouncedA11yStatusUpdate()
 
-      expect(getA11yStatusContainer()).toHaveTextContent('custom message')
+      expect(getA11yStatusContainer()).toHaveTextContent(a11yStatusMessage1)
+      expect(getA11yStatusMessage).toHaveBeenCalledTimes(1)
+      expect(getA11yStatusMessage).toHaveBeenCalledWith({
+        activeIndex: 0,
+        selectedItems,
+      })
+
+      getA11yStatusMessage.mockClear()
+
+      await keyDownOnSelectedItemAtIndex(user, 0, '{ArrowRight}')
+
+      waitForDebouncedA11yStatusUpdate()
+
+      expect(getA11yStatusContainer()).toHaveTextContent(a11yStatusMessage2)
+      expect(getA11yStatusMessage).toHaveBeenCalledTimes(1)
+      expect(getA11yStatusMessage).toHaveBeenCalledWith({
+        activeIndex: 1,
+        selectedItems,
+      })
+    })
+
+    test('clears the text content after 500ms', async () => {
+      const {user} = renderMultipleCombobox({
+        multipleSelectionProps: {
+          selectedItems: [items[0], items[1]],
+          initialActiveIndex: 1,
+          getA11yStatusMessage: jest.fn().mockReturnValue('bla bla'),
+        },
+      })
+
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
+      waitForDebouncedA11yStatusUpdate(true)
+
+      expect(getA11yStatusContainer()).toBeEmptyDOMElement()
+    })
+
+    test('removes the message element from the DOM on unmount', async () => {
+      const {unmount, user} = renderMultipleCombobox({
+        multipleSelectionProps: {
+          selectedItems: [items[0], items[1]],
+          initialActiveIndex: 0,
+          getA11yStatusMessage: jest.fn().mockReturnValue('bla bla'),
+        },
+      })
+
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
+      waitForDebouncedA11yStatusUpdate(true)
+      unmount()
+
+      expect(getA11yStatusContainer()).not.toBeInTheDocument()
+    })
+
+    test('is added to the document provided by the user as prop', async () => {
+      const environment = {
+        document: {
+          getElementById: jest.fn().mockReturnValue({remove: jest.fn()}),
+          createElement: jest.fn(),
+          activeElement: {},
+          body: {},
+        },
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        Node,
+      }
+
+      const {user} = renderMultipleCombobox({
+        multipleSelectionProps: {
+          selectedItems: [items[0], items[1]],
+          initialActiveIndex: 1,
+          getA11yStatusMessage: jest.fn().mockReturnValue('bla bla'),
+          environment,
+        },
+      })
+
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
+      waitForDebouncedA11yStatusUpdate()
+
+      expect(environment.document.getElementById).toHaveBeenCalledTimes(1)
+      expect(environment.document.getElementById).toHaveBeenCalledWith(
+        'a11y-status-message',
+      )
     })
   })
 
   describe('activeIndex', () => {
-    test('controls the state property if passed', () => {
-      const {
-        keyDownOnSelectedItemAtIndex,
-        clickOnSelectedItemAtIndex,
-        getSelectedItemAtIndex,
-        focusSelectedItemAtIndex,
-      } = renderMultipleCombobox({
+    test('controls the state property if passed', async () => {
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1]],
           activeIndex: 1,
@@ -127,23 +212,20 @@ describe('props', () => {
       })
 
       focusSelectedItemAtIndex(1)
-      clickOnSelectedItemAtIndex(0)
+      await clickOnSelectedItemAtIndex(user, 0)
 
       expect(getSelectedItemAtIndex(0)).toHaveAttribute('tabindex', '-1')
       expect(getSelectedItemAtIndex(1)).toHaveAttribute('tabindex', '0')
-      expect(getSelectedItemAtIndex(1)).toHaveFocus()
 
-      keyDownOnSelectedItemAtIndex(1, 'ArrowLeft')
-
-      expect(getSelectedItemAtIndex(0)).toHaveAttribute('tabindex', '-1')
-      expect(getSelectedItemAtIndex(1)).toHaveAttribute('tabindex', '0')
-      expect(getSelectedItemAtIndex(1)).toHaveFocus()
-
-      keyDownOnSelectedItemAtIndex(1, 'ArrowRight')
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
 
       expect(getSelectedItemAtIndex(0)).toHaveAttribute('tabindex', '-1')
       expect(getSelectedItemAtIndex(1)).toHaveAttribute('tabindex', '0')
-      expect(getSelectedItemAtIndex(1)).toHaveFocus()
+
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowRight}')
+
+      expect(getSelectedItemAtIndex(0)).toHaveAttribute('tabindex', '-1')
+      expect(getSelectedItemAtIndex(1)).toHaveAttribute('tabindex', '0')
     })
   })
 
@@ -240,23 +322,16 @@ describe('props', () => {
       )
     })
 
-    test('is called at each state change with the appropriate change type', () => {
+    test('is called at each state change with the appropriate change type', async () => {
       const stateReducer = jest.fn((s, a) => a.changes)
-      const {
-        keyDownOnSelectedItemAtIndex,
-        clickOnSelectedItemAtIndex,
-        keyDownOnInput,
-        input,
-        clickOnInput,
-      } = renderMultipleCombobox({
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1], items[2]],
           stateReducer,
         },
       })
 
-      input.focus()
-      keyDownOnInput('Backspace')
+      await keyDownOnInput(user, '{Backspace}')
 
       expect(stateReducer).toHaveBeenCalledTimes(1)
       expect(stateReducer).toHaveBeenLastCalledWith(
@@ -271,7 +346,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnInput('ArrowLeft')
+      await keyDownOnInput(user, '{ArrowLeft}')
 
       expect(stateReducer).toHaveBeenCalledTimes(2)
       expect(stateReducer).toHaveBeenLastCalledWith(
@@ -284,7 +359,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnSelectedItemAtIndex(1, 'ArrowLeft')
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
 
       expect(stateReducer).toHaveBeenCalledTimes(3)
       expect(stateReducer).toHaveBeenLastCalledWith(
@@ -297,7 +372,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnSelectedItemAtIndex(0, 'ArrowRight')
+      await keyDownOnSelectedItemAtIndex(user, 0, '{ArrowRight}')
 
       expect(stateReducer).toHaveBeenCalledTimes(4)
       expect(stateReducer).toHaveBeenLastCalledWith(
@@ -310,7 +385,7 @@ describe('props', () => {
         }),
       )
 
-      clickOnInput()
+      await clickOnInput(user)
 
       expect(stateReducer).toHaveBeenCalledTimes(5)
       expect(stateReducer).toHaveBeenLastCalledWith(
@@ -323,7 +398,7 @@ describe('props', () => {
         }),
       )
 
-      clickOnSelectedItemAtIndex(0)
+      await clickOnSelectedItemAtIndex(user, 0)
 
       expect(stateReducer).toHaveBeenCalledTimes(6)
       expect(stateReducer).toHaveBeenLastCalledWith(
@@ -336,7 +411,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnSelectedItemAtIndex(0, 'Delete')
+      await keyDownOnSelectedItemAtIndex(user, 0, '{Delete}')
 
       expect(stateReducer).toHaveBeenCalledTimes(7)
       expect(stateReducer).toHaveBeenLastCalledWith(
@@ -351,7 +426,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnSelectedItemAtIndex(0, 'Backspace')
+      await keyDownOnSelectedItemAtIndex(user, 0, '{Backspace}')
 
       expect(stateReducer).toHaveBeenCalledTimes(8)
       expect(stateReducer).toHaveBeenLastCalledWith(
@@ -367,30 +442,28 @@ describe('props', () => {
       )
     })
 
-    test('replaces prop values with user defined', () => {
+    test('replaces prop values with user defined', async () => {
       const stateReducer = jest.fn((s, a) => {
         const changes = a.changes
         changes.activeIndex = 0
         return changes
       })
-      const {
-        clickOnSelectedItemAtIndex,
-        getSelectedItemAtIndex,
-      } = renderMultipleCombobox({
+
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1]],
           stateReducer,
         },
       })
 
-      clickOnSelectedItemAtIndex(1)
+      await clickOnSelectedItemAtIndex(user, 1)
 
       expect(getSelectedItemAtIndex(1)).toHaveAttribute('tabindex', '-1')
       expect(getSelectedItemAtIndex(0)).toHaveAttribute('tabindex', '0')
       expect(getSelectedItemAtIndex(0)).toHaveFocus()
     })
 
-    test('receives state, changes and type', () => {
+    test('receives state, changes and type', async () => {
       const stateReducer = jest.fn((s, a) => {
         expect(a.type).not.toBeUndefined()
         expect(a.type).not.toBeNull()
@@ -403,17 +476,17 @@ describe('props', () => {
 
         return a.changes
       })
-      const {clickOnSelectedItemAtIndex} = renderMultipleCombobox({
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1]],
           stateReducer,
         },
       })
 
-      clickOnSelectedItemAtIndex(0)
+      await clickOnSelectedItemAtIndex(user, 0)
     })
 
-    test('changes are visible in onChange handlers', () => {
+    test('changes are visible in onChange handlers', async () => {
       const activeIndex = 0
       const inputItems = ['foo', 'bar']
       const stateReducer = jest.fn(() => ({
@@ -423,7 +496,7 @@ describe('props', () => {
       const onSelectedItemsChange = jest.fn()
       const onActiveIndexChange = jest.fn()
       const onStateChange = jest.fn()
-      const {keyDownOnInput} = renderMultipleCombobox({
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           stateReducer,
           onStateChange,
@@ -433,7 +506,7 @@ describe('props', () => {
         },
       })
 
-      keyDownOnInput('ArrowLeft')
+      await keyDownOnInput(user, '{ArrowLeft}')
 
       expect(onActiveIndexChange).toHaveBeenCalledTimes(1)
       expect(onActiveIndexChange).toHaveBeenCalledWith(
@@ -459,16 +532,16 @@ describe('props', () => {
   })
 
   describe('onActiveIndexChange', () => {
-    test('is called at activeIndex change', () => {
+    test('is called at activeIndex change', async () => {
       const onActiveIndexChange = jest.fn()
-      const {clickOnSelectedItemAtIndex} = renderMultipleCombobox({
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1]],
           onActiveIndexChange,
         },
       })
 
-      clickOnSelectedItemAtIndex(1)
+      await clickOnSelectedItemAtIndex(user, 1)
 
       expect(onActiveIndexChange).toHaveBeenCalledTimes(1)
       expect(onActiveIndexChange).toHaveBeenCalledWith(
@@ -478,9 +551,9 @@ describe('props', () => {
       )
     })
 
-    test('is not called at if selectedItem is the same', () => {
+    test('is not called at if selectedItem is the same', async () => {
       const onActiveIndexChange = jest.fn()
-      const {clickOnSelectedItemAtIndex} = renderMultipleCombobox({
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1]],
           onActiveIndexChange,
@@ -488,18 +561,14 @@ describe('props', () => {
         },
       })
 
-      clickOnSelectedItemAtIndex(1)
+      await clickOnSelectedItemAtIndex(user, 1)
 
       expect(onActiveIndexChange).not.toHaveBeenCalled()
     })
 
-    test('works correctly with the corresponding control prop', () => {
+    test('works correctly with the corresponding control prop', async () => {
       let activeIndex = 3
-      const {
-        keyDownOnSelectedItemAtIndex,
-        getSelectedItemAtIndex,
-        rerender,
-      } = renderMultipleCombobox({
+      const {user, rerender} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: items,
           activeIndex,
@@ -509,7 +578,7 @@ describe('props', () => {
         },
       })
 
-      keyDownOnSelectedItemAtIndex(3, 'ArrowLeft')
+      await keyDownOnSelectedItemAtIndex(user, 3, '{ArrowLeft}')
       rerender({multipleSelectionProps: {activeIndex}})
 
       expect(getSelectedItemAtIndex(2)).toHaveAttribute('tabindex', '0')
@@ -520,6 +589,7 @@ describe('props', () => {
         onActiveIndexChange: () => {
           result.current.setSelectedItems([items[0]])
         },
+        initialSelectedItems: items,
       })
 
       act(() => {
@@ -531,9 +601,9 @@ describe('props', () => {
   })
 
   describe('onSelectedItemsChange', () => {
-    test('is called at items change', () => {
+    test('is called at items change', async () => {
       const onSelectedItemsChange = jest.fn()
-      const {keyDownOnSelectedItemAtIndex} = renderMultipleCombobox({
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1]],
           onSelectedItemsChange,
@@ -541,7 +611,7 @@ describe('props', () => {
         },
       })
 
-      keyDownOnSelectedItemAtIndex(1, 'Delete')
+      await keyDownOnSelectedItemAtIndex(user, 1, '{Delete}')
 
       expect(onSelectedItemsChange).toHaveBeenCalledTimes(1)
       expect(onSelectedItemsChange).toHaveBeenCalledWith(
@@ -551,9 +621,9 @@ describe('props', () => {
       )
     })
 
-    test('is not called at if items is the same', () => {
+    test('is not called at if items is the same', async () => {
       const onSelectedItemsChange = jest.fn()
-      const {clickOnSelectedItemAtIndex} = renderMultipleCombobox({
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1]],
           onSelectedItemsChange,
@@ -561,18 +631,14 @@ describe('props', () => {
         },
       })
 
-      clickOnSelectedItemAtIndex(0)
+      await clickOnSelectedItemAtIndex(user, 0)
 
       expect(onSelectedItemsChange).not.toHaveBeenCalled()
     })
 
-    test('works correctly with the corresponding control prop', () => {
+    test('works correctly with the corresponding control prop', async () => {
       let selectedItems = [items[0], items[1]]
-      const {
-        keyDownOnSelectedItemAtIndex,
-        getSelectedItems,
-        rerender,
-      } = renderMultipleCombobox({
+      const {user, rerender} = renderMultipleCombobox({
         multipleSelectionProps: {
           selectedItems,
           initialActiveIndex: 0,
@@ -582,23 +648,25 @@ describe('props', () => {
         },
       })
 
-      keyDownOnSelectedItemAtIndex(0, 'Delete')
+      await keyDownOnSelectedItemAtIndex(user, 0, '{Delete}')
       rerender({multipleSelectionProps: {selectedItems}})
 
       expect(getSelectedItems()).toHaveLength(1)
     })
 
     test('can have downshift actions executed', () => {
+      const initialActiveIndex = 3
       const {result} = renderUseMultipleSelection({
         onSelectedItemsChange: () => {
           result.current.setActiveIndex(1)
         },
         initialSelectedItems: items,
+        initialActiveIndex,
       })
 
       act(() => {
         result.current
-          .getSelectedItemProps({index: 3})
+          .getSelectedItemProps({index: initialActiveIndex})
           .onKeyDown({key: 'Backspace'})
       })
 
@@ -607,22 +675,16 @@ describe('props', () => {
   })
 
   describe('onStateChange', () => {
-    test('is called at each state property change', () => {
+    test('is called at each state property change', async () => {
       const onStateChange = jest.fn()
-      const {
-        keyDownOnSelectedItemAtIndex,
-        clickOnSelectedItemAtIndex,
-        keyDownOnInput,
-        input,
-      } = renderMultipleCombobox({
+      const {user} = renderMultipleCombobox({
         multipleSelectionProps: {
           initialSelectedItems: [items[0], items[1], items[2]],
           onStateChange,
         },
       })
 
-      input.focus()
-      keyDownOnInput('Backspace')
+      await keyDownOnInput(user, '{Backspace}')
 
       expect(onStateChange).toHaveBeenCalledTimes(1)
       expect(onStateChange).toHaveBeenLastCalledWith(
@@ -632,7 +694,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnInput('ArrowLeft')
+      await keyDownOnInput(user, '{ArrowLeft}')
 
       expect(onStateChange).toHaveBeenCalledTimes(2)
       expect(onStateChange).toHaveBeenLastCalledWith(
@@ -642,7 +704,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnSelectedItemAtIndex(1, 'ArrowLeft')
+      await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
 
       expect(onStateChange).toHaveBeenCalledTimes(3)
       expect(onStateChange).toHaveBeenLastCalledWith(
@@ -652,7 +714,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnSelectedItemAtIndex(0, 'ArrowRight')
+      await keyDownOnSelectedItemAtIndex(user, 0, '{ArrowRight}')
 
       expect(onStateChange).toHaveBeenCalledTimes(4)
       expect(onStateChange).toHaveBeenLastCalledWith(
@@ -662,7 +724,7 @@ describe('props', () => {
         }),
       )
 
-      clickOnSelectedItemAtIndex(0)
+      await clickOnSelectedItemAtIndex(user, 0)
 
       expect(onStateChange).toHaveBeenCalledTimes(5)
       expect(onStateChange).toHaveBeenLastCalledWith(
@@ -672,7 +734,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnSelectedItemAtIndex(0, 'Delete')
+      await keyDownOnSelectedItemAtIndex(user, 0, '{Delete}')
 
       expect(onStateChange).toHaveBeenCalledTimes(6)
       expect(onStateChange).toHaveBeenLastCalledWith(
@@ -682,7 +744,7 @@ describe('props', () => {
         }),
       )
 
-      keyDownOnSelectedItemAtIndex(0, 'Backspace')
+      await keyDownOnSelectedItemAtIndex(user, 0, '{Backspace}')
 
       expect(onStateChange).toHaveBeenCalledTimes(7)
       expect(onStateChange).toHaveBeenLastCalledWith(
@@ -694,35 +756,29 @@ describe('props', () => {
     })
   })
 
-  test('overrides navigation previos and next keys correctly', () => {
-    const {
-      keyDownOnInput,
-      getSelectedItemAtIndex,
-      keyDownOnSelectedItemAtIndex,
-      input,
-    } = renderMultipleCombobox({
+  test('overrides navigation previos and next keys correctly', async () => {
+    const {user} = renderMultipleCombobox({
       multipleSelectionProps: {
-        keyNavigationPrevious: 'ArrowUp',
-        keyNavigationNext: 'ArrowDown',
+        keyNavigationPrevious: 'ArrowRight',
+        keyNavigationNext: 'ArrowLeft',
         initialSelectedItems: [items[0], items[1]],
       },
     })
 
-    keyDownOnInput('ArrowUp')
+    await keyDownOnInput(user, '{ArrowRight}')
 
     expect(getSelectedItemAtIndex(1)).toHaveFocus()
 
-    keyDownOnSelectedItemAtIndex(1, 'ArrowUp')
+    await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowRight}')
 
     expect(getSelectedItemAtIndex(0)).toHaveFocus()
 
-    keyDownOnSelectedItemAtIndex(0, 'ArrowDown')
-
+    await keyDownOnSelectedItemAtIndex(user, 0, '{ArrowLeft}')
     expect(getSelectedItemAtIndex(1)).toHaveFocus()
 
-    keyDownOnSelectedItemAtIndex(1, 'ArrowDown')
+    await keyDownOnSelectedItemAtIndex(user, 1, '{ArrowLeft}')
 
-    expect(input).toHaveFocus()
+    expect(getInput()).toHaveFocus()
   })
 
   test('can have downshift actions executed', () => {

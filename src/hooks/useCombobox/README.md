@@ -2,20 +2,19 @@
 
 ## The problem
 
-You have a combobox or autocomplete dropdown in your application and you want it to
-be accessible and functional. For consistency reasons you want it to follow the
-[ARIA design pattern][combobox-aria] for a combobox. You also want this solution
-to be simple to use and flexible so you can tailor it further to your specific
-needs.
+You have a combobox or autocomplete dropdown in your application and you want it
+to be accessible and functional. For consistency reasons you want it to follow
+the [ARIA design pattern][combobox-aria-example] for a combobox. You also want
+this solution to be simple to use and flexible so you can tailor it further to
+your specific needs.
 
 ## This solution
 
 `useCombobox` is a React hook that manages all the stateful logic needed to make
 the combobox functional and accessible. It returns a set of props that are meant
 to be called and their results destructured on the combobox's elements: its
-label, toggle button, input, combobox container, list and list items. The props
-are similar to the ones provided by vanilla `<Downshift>` to the children render
-prop.
+label, toggle button, input, list and list items. The props are similar to the
+ones provided by vanilla `<Downshift>` to the children render prop.
 
 These props are called getter props and their return values are destructured as
 a set of ARIA attributes and event listeners. Together with the action props and
@@ -23,6 +22,45 @@ state props, they create all the stateful logic needed for the combobox to
 implement the corresponding ARIA pattern. Every functionality needed should be
 provided out-of-the-box: menu toggle, item selection and up/down movement
 between them, screen reader support, highlight by character keys etc.
+
+## Types of Autocomplete
+
+By default, our implementation and examples illustrate an autocomplete of type
+_list_. This involves performing your own items filtering logic as well as
+keeping the _aria_autocomplete_ value returned by the
+[getInputProps](#getinputprops).
+
+There are, in total, 3 types of autocomplete you can opt for, and these are as
+follows:
+
+- no autocomplete:
+  - [ARIA example][combobox-aria-example-none]
+  - use _aria-autocomplete="none"_ attribute to override the default value from
+    _getInputProps_.
+  - do not implement any filtering logic yourself, just render the listbox
+    items. Basically, take the [code example](#usage) below, remove the useState
+    with items, the onInputValueChange function, pass _colors_ as _items_ prop
+    and render the _colors_ if _isOpen_ is _true_.
+- list autocomplete:
+  - [ARIA example][combobox-aria-example]
+  - just use the [example provided below](#usage) or anything equivalent.
+  - filtering logic inside the menu is done by the _useCombobox_ consumer.
+- list and inline autocomplete:
+  - [ARIA example][combobox-aria-example-both]
+  - use _aria-autocomplete="both"_ attribute to override the default value from
+    _getInputProps_.
+  - filtering logic inside the menu is done by the _useCombobox_ consumer.
+  - inline autocomplete based on the highlighted item in the menu is also
+    performed by the consumer.
+
+## Migration through breaking changes
+
+The hook received breaking changes related to how it works, as well as the API,
+starting with v7. They are documented here:
+
+- [v7 migration guide][migration-guide-v7]
+- [v8 migration guide][migration-guide-v8]
+- [v9 migration guide][migration-guide-v9]
 
 ## Table of Contents
 
@@ -36,6 +74,7 @@ between them, screen reader support, highlight by character keys etc.
   - [onSelectedItemChange](#onselecteditemchange)
   - [stateReducer](#statereducer)
 - [Advanced Props](#advanced-props)
+  - [isItemDisabled](#isitemdisabled)
   - [initialSelectedItem](#initialselecteditem)
   - [initialIsOpen](#initialisopen)
   - [initialHighlightedIndex](#initialhighlightedindex)
@@ -44,8 +83,8 @@ between them, screen reader support, highlight by character keys etc.
   - [defaultIsOpen](#defaultisopen)
   - [defaultHighlightedIndex](#defaulthighlightedindex)
   - [defaultInputValue](#defaultinputvalue)
+  - [itemToKey](#itemtokey)
   - [getA11yStatusMessage](#geta11ystatusmessage)
-  - [getA11ySelectionMessage](#geta11yselectionmessage)
   - [onHighlightedIndexChange](#onhighlightedindexchange)
   - [onIsOpenChange](#onisopenchange)
   - [onInputValueChange](#oninputvaluechange)
@@ -61,7 +100,6 @@ between them, screen reader support, highlight by character keys etc.
   - [inputId](#inputid)
   - [getItemId](#getitemid)
   - [environment](#environment)
-  - [circularNavigation](#circularnavigation)
 - [stateChangeTypes](#statechangetypes)
 - [Control Props](#control-props)
 - [Returned props](#returned-props)
@@ -71,6 +109,7 @@ between them, screen reader support, highlight by character keys etc.
 - [Event Handlers](#event-handlers)
   - [Default handlers](#default-handlers)
   - [Customizing Handlers](#customizing-handlers)
+- [Examples](#examples)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -82,60 +121,116 @@ between them, screen reader support, highlight by character keys etc.
 import * as React from 'react'
 import {render} from 'react-dom'
 import {useCombobox} from 'downshift'
-// items = ['Neptunium', 'Plutonium', ...]
-import {items, menuStyles, comboboxStyles} from './utils'
+
+const colors = [
+  'Black',
+  'Red',
+  'Green',
+  'Blue',
+  'Orange',
+  'Purple',
+  'Pink',
+  'Orchid',
+  'Aqua',
+  'Lime',
+  'Gray',
+  'Brown',
+  'Teal',
+  'Skyblue',
+]
 
 function DropdownCombobox() {
-  const [inputItems, setInputItems] = useState(items)
+  const [inputItems, setInputItems] = React.useState(colors)
   const {
     isOpen,
-    selectedItem,
     getToggleButtonProps,
     getLabelProps,
     getMenuProps,
     getInputProps,
-    getComboboxProps,
     highlightedIndex,
     getItemProps,
+    selectedItem,
+    selectItem,
   } = useCombobox({
     items: inputItems,
     onInputValueChange: ({inputValue}) => {
       setInputItems(
-        items.filter(item =>
+        colors.filter(item =>
           item.toLowerCase().startsWith(inputValue.toLowerCase()),
         ),
       )
     },
   })
-
   return (
-    <>
-      <label {...getLabelProps()}>Choose an element:</label>
-      <div style={comboboxStyles} {...getComboboxProps()}>
-        <input {...getInputProps()} />
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: 'fit-content',
+        justifyContent: 'center',
+        marginTop: 100,
+        alignSelf: 'center',
+      }}
+    >
+      <label
+        style={{
+          fontWeight: 'bolder',
+          color: selectedItem ? selectedItem : 'black',
+        }}
+        {...getLabelProps()}
+      >
+        Choose an element:
+      </label>
+      <div>
+        <input
+          style={{padding: '4px'}}
+          {...getInputProps()}
+          data-testid="combobox-input"
+        />
         <button
-          type="button"
+          style={{padding: '4px 8px'}}
+          aria-label="toggle menu"
+          data-testid="combobox-toggle-button"
           {...getToggleButtonProps()}
-          aria-label={'toggle menu'}
         >
-          &#8595;
+          {isOpen ? <>&#8593;</> : <>&#8595;</>}
+        </button>
+        <button
+          style={{padding: '4px 8px'}}
+          aria-label="toggle menu"
+          data-testid="clear-button"
+          onClick={() => selectItem(null)}
+        >
+          &#10007;
         </button>
       </div>
-      <ul {...getMenuProps()} style={menuStyles}>
+      <ul
+        {...getMenuProps()}
+        style={{
+          listStyle: 'none',
+          width: '100%',
+          padding: '0',
+          margin: '4px 0 0 0',
+        }}
+      >
         {isOpen &&
           inputItems.map((item, index) => (
             <li
-              style={
-                highlightedIndex === index ? {backgroundColor: '#bde4ff'} : {}
-              }
+              style={{
+                padding: '4px',
+                backgroundColor: highlightedIndex === index ? '#bde4ff' : null,
+              }}
               key={`${item}${index}`}
-              {...getItemProps({item, index})}
+              {...getItemProps({
+                item,
+                index,
+              })}
             >
               {item}
             </li>
           ))}
       </ul>
-    </>
+    </div>
   )
 }
 
@@ -197,10 +292,11 @@ how the component interacts with user updates. It gives you the current state
 and the state that will be set, and you return the state that you want to set.
 
 - `state`: The full current state of downshift.
-- `actionAndChanges`: Object that contains the action `type`, props needed to
-  return a new state based on that type and the changes suggested by the
-  Downshift default reducer. About the `type` property you can learn more about
-  in the [`stateChangeTypes`](#statechangetypes) section.
+- `actionAndChanges`: Object that contains the action `type`, the `props` passed
+  to `useCombobox`, the `changes` suggested by the Downshift default reducer,
+  and any action-specific fields (e.g. `altKey`, `key`, `index`). About the
+  `type` property you can learn more about in the
+  [`stateChangeTypes`](#statechangetypes) section.
 
 ```javascript
 import {useCombobox} from 'downshift'
@@ -236,7 +332,33 @@ function stateReducer(state, actionAndChanges) {
 > reducer function should be "pure." This means it should do nothing other than
 > return the state changes you want to have happen.
 
+When an outside mouse or touch interaction triggers `InputBlur`,
+`actionAndChanges.source` is `'outside'`. This field is omitted for blur actions
+from the input's `onBlur` handler. If another library manages outside dismissal,
+you can ignore Downshift's outside blur actions while preserving normal blur
+behavior:
+
+```javascript
+useCombobox({
+  items,
+  stateReducer(state, {type, source, changes}) {
+    return type === useCombobox.stateChangeTypes.InputBlur &&
+      source === 'outside'
+      ? state
+      : changes
+  },
+})
+```
+
 ## Advanced Props
+
+### isItemDisabled
+
+> `function(item: any, index: number)` | defaults to: `(_item, _index) => false`
+
+If an item needs to be marked as disabled, this function needs to return `true`
+for that item. Disabled items will be skipped from keyboard navigation, will not
+be selected and will be marked as disabled for screen readers.
 
 ### initialSelectedItem
 
@@ -291,50 +413,90 @@ reset or when an item is selected.
 Pass a string that sets the content of the input when downshift is reset or when
 an item is selected.
 
+### itemToKey
+
+> `function(item: any)` | defaults to: `item => item`
+
+Used to determine the uniqueness of an item when searching for the item or
+comparing the item with another. Returns the item itself, by default, so the
+comparing/searching is done internally via referential equality.
+
+If using items as objects and their reference will change during use, you can
+use the function to generate a unique key for each item, such as an `id` prop.
+
+```js
+function itemToKey(item) {
+  return item.id
+}
+```
+
+> This deprecates the "selectedItemChanged" prop. If you are using the prop
+> already, make sure you change to "itemToKey" as the former is removed in v9. A
+> migration example:
+
+```js
+// initial items.
+const items = [
+  {id: 1, value: 'Apples'},
+  {id: 2, value: 'Oranges'},
+]
+// the same items but with different references, for any reason.
+const newItems = [
+  {id: 1, value: 'Apples'},
+  {id: 2, value: 'Oranges'},
+]
+
+// previously, if you probably had something like this.
+function selectedItemChanged(item1, item2) {
+  return item1.id === item2.id
+}
+
+// moving forward, switch to this one.
+function itemToKey(item) {
+  return item.id
+  // and we will do the comparison like: const isChanged = itemToKey(prevSelectedItem) !== itemToKey(nextSelectedItem)
+}
+```
+
 ### getA11yStatusMessage
 
 > `function({/* see below */})` | default messages provided in English
 
 This function is passed as props to a status updating function nested within
-that allows you to create your own ARIA statuses. It is called when one of the
-following props change: `items`, `highlightedIndex`, `inputValue` or `isOpen`.
+that allows you to create your own ARIA statuses. It is called when the state
+changes: `selectedItem`, `highlightedIndex`, `inputValue` or `isOpen`.
 
-A default `getA11yStatusMessage` function is provided that will check
-`resultCount` and return "No results are available." or if there are results ,
-"`resultCount` results are available, use up and down arrow keys to navigate.
-Press Enter key to select."
+There is no default function provided anymore since v9, so if there's no prop
+passed, no aria live status message is created. An implementation that resembles
+the previous default is written below, should you want to keep pre v9 behaviour.
 
-> Note: `resultCount` is `items.length` in our default version of the function.
+We don't provide this as a default anymore since we consider that screen readers
+have been significantly improved and they can convey information about items
+count, possible actions and highlighted items only from the HTML markup, without
+the need for aria-live regions.
 
-### getA11ySelectionMessage
+```js
+function getA11yStatusMessage(state) {
+  if (!state.isOpen) {
+    return ''
+  }
+  // you need to get resultCount and previousResultCount yourself now, since we don't pass them as arguments anymore
+  const resultCount = items.length
+  const previousResultCount = previousResultCountRef.current
 
-> `function({/* see below */})` | default messages provided in English
+  if (!resultCount) {
+    return 'No results are available.'
+  }
 
-This function is similar to the `getA11yStatusMessage` but it is generating a
-message when an item is selected. It is passed as props to a status updating
-function nested within that allows you to create your own ARIA statuses. It is
-called when `selectedItem` changes.
+  if (resultCount !== previousResultCount) {
+    return `${resultCount} result${
+      resultCount === 1 ? ' is' : 's are'
+    } available, use up and down arrow keys to navigate. Press Enter key to select.`
+  }
 
-A default `getA11ySelectionMessage` function is provided. When an item is
-selected, the message is a selection related one, narrating
-"`itemToString(selectedItem)` has been selected".
-
-The object you are passed to generate your status message, for both
-`getA11yStatusMessage` and `getA11ySelectionMessage`, has the following
-properties:
-
-<!-- This table was generated via http://www.tablesgenerator.com/markdown_tables -->
-
-| property              | type            | description                                                                                  |
-| --------------------- | --------------- | -------------------------------------------------------------------------------------------- |
-| `highlightedIndex`    | `number`        | The currently highlighted index                                                              |
-| `highlightedItem`     | `any`           | The value of the highlighted item                                                            |
-| `isOpen`              | `boolean`       | The `isOpen` state                                                                           |
-| `inputValue`          | `string`        | The value in the text input.                                                                 |
-| `itemToString`        | `function(any)` | The `itemToString` function (see props) for getting the string value from one of the options |
-| `previousResultCount` | `number`        | The total items showing in the dropdown the last time the status was updated                 |
-| `resultCount`         | `number`        | The total items showing in the dropdown                                                      |
-| `selectedItem`        | `any`           | The value of the currently selected item                                                     |
+  return ''
+}
+```
 
 ### onHighlightedIndexChange
 
@@ -342,16 +504,15 @@ properties:
 
 Called each time the highlighted item was changed. Items can be highlighted
 while hovering the mouse over them or by keyboard keys such as Up Arrow, Down
-Arrow, Home and End. Arrow keys can be combined with Shift to move by a step of
-5 positions instead of 1. Items can also be highlighted by hitting character
-keys that are part of their starting string equivalent.
+Arrow, Home and End. Items can also be highlighted by hitting character keys
+that are part of their starting string equivalent.
 
 - `changes`: These are the properties that actually have changed since the last
   state change. This object is guaranteed to contain the `highlightedIndex`
   property with the new value. This also has a `type` property which you can
   learn more about in the [`stateChangeTypes`](#statechangetypes) section. This
   property will be part of the actions that can trigger a `highlightedIndex`
-  change, for example `useCombobox.stateChangeTypes.MenuKeyDownArrowUp`.
+  change, for example `useCombobox.stateChangeTypes.InputKeyDownArrowUp`.
 
 ### onIsOpenChange
 
@@ -436,6 +597,38 @@ The item that should be selected.
 
 The value to be displayed in the text input.
 
+🚨 Important 🚨
+
+If you use `onInputValueChange`, `onStateChange` or anything similar in order to
+update a state variable that will end up controlling `inputValue`, you will
+encounter a
+[cursor jump issue](https://github.com/downshift-js/downshift/issues/1108).
+There's no way to properly fix this in our current `React.useReducer` setup, so
+in order to work around the issue, consider the change below.
+
+```jsx
+const [value, setValue] = useState('')
+const {getInputProps} = useCombobox({
+  items: [],
+  inputValue: value,
+  // change this:
+  onInputValueChange: ({inputValue}) => {
+    setValue(inputValue)
+  },
+})
+
+return (
+  <input
+    {...getInputProps({
+      // to this:
+      onChange: e => {
+        setValue(e.target.value)
+      },
+    })}
+  />
+)
+```
+
 ### id
 
 > `string` | defaults to a generated ID
@@ -492,14 +685,6 @@ then you will need to pass in a custom object that is able to provide
 [access to these properties](https://gist.github.com/Rendez/1dd55882e9b850dd3990feefc9d6e177)
 for downshift.
 
-### circularNavigation
-
-> `boolean` | defaults to `true`
-
-Controls the circular keyboard navigation between items. If set to `true`, when
-first item is highlighted, the Arrow Up will move highlight to the last item,
-and viceversa using Arrow Down.
-
 ## stateChangeTypes
 
 There are a few props that expose changes to state
@@ -516,8 +701,11 @@ The list of all possible values this `type` property can take is defined in
 - `useCombobox.stateChangeTypes.InputKeyDownEscape`
 - `useCombobox.stateChangeTypes.InputKeyDownHome`
 - `useCombobox.stateChangeTypes.InputKeyDownEnd`
+- `useCombobox.stateChangeTypes.InputKeyDownPageUp`
+- `useCombobox.stateChangeTypes.InputKeyDownPadeDown`
 - `useCombobox.stateChangeTypes.InputKeyDownEnter`
 - `useCombobox.stateChangeTypes.InputChange`
+- `useCombobox.stateChangeTypes.InputClick`
 - `useCombobox.stateChangeTypes.InputBlur`
 - `useCombobox.stateChangeTypes.MenuMouseLeave`
 - `useCombobox.stateChangeTypes.ItemMouseMove`
@@ -553,8 +741,8 @@ that state from other components, `redux`, `react-router`, or anywhere else.
 
 > Note: This is very similar to how normal controlled components work elsewhere
 > in react (like `<input />`). If you want to learn more about this concept, you
-> can learn about that from this the
-> [Advanced React Component Patterns course](#advanced-react-component-patterns-course)
+> can learn about that from the [Advanced React Component Patterns
+> course][advanced-react-component-patterns-course]
 
 ## Returned props
 
@@ -607,14 +795,13 @@ props being overridden (or overriding the props returned). For example:
 
 <!-- This table was generated via http://www.tablesgenerator.com/markdown_tables -->
 
-| property               | type           | description                                                                                      |
-| ---------------------- | -------------- | ------------------------------------------------------------------------------------------------ |
-| `getToggleButtonProps` | `function({})` | returns the props you should apply to any menu toggle button element you render.                 |
-| `getItemProps`         | `function({})` | returns the props you should apply to any menu item elements you render.                         |
-| `getLabelProps`        | `function({})` | returns the props you should apply to the `label` element that you render.                       |
-| `getMenuProps`         | `function({})` | returns the props you should apply to the `ul` element (or root of your menu) that you render.   |
-| `getInputProps`        | `function({})` | returns the props you should apply to the `input` element that you render.                       |
-| `getComboboxProps`     | `function({})` | returns the props you should apply to an element that wraps the `input` element that you render. |
+| property               | type           | description                                                                                    |
+| ---------------------- | -------------- | ---------------------------------------------------------------------------------------------- |
+| `getToggleButtonProps` | `function({})` | returns the props you should apply to any menu toggle button element you render.               |
+| `getItemProps`         | `function({})` | returns the props you should apply to any menu item elements you render.                       |
+| `getLabelProps`        | `function({})` | returns the props you should apply to the `label` element that you render.                     |
+| `getMenuProps`         | `function({})` | returns the props you should apply to the `ul` element (or root of your menu) that you render. |
+| `getInputProps`        | `function({})` | returns the props you should apply to the `input` element that you render.                     |
 
 #### `getLabelProps`
 
@@ -734,10 +921,6 @@ Optional properties:
   However, if you are just rendering a primitive component like `<div>`, there
   is no need to specify this property. It defaults to `ref`.
 
-- `disabled`: If this is set to `true`, then all of the downshift item event
-  handlers will be omitted. Items will not be highlighted when hovered, and
-  items will not be selected when clicked.
-
 #### `getToggleButtonProps`
 
 Call this and apply the returned props to a `button`. It allows you to toggle
@@ -798,28 +981,16 @@ Optional properties:
   However, if you are just rendering a primitive component like `<div>`, there
   is no need to specify this property. It defaults to `ref`.
 
+- `aria-label`: By default the input will add an `aria-labelledby` that refers
+  to the `<label>` rendered with `getLabelProps`. However, if you provide
+  `aria-label` to give a more specific label that describes the options
+  available, then `aria-labelledby` will not be provided and screen readers can
+  use your `aria-label` instead.
+
 In some cases, you might want to completely bypass the `refKey` check. Then you
 can provide the object `{suppressRefError : true}` as the second argument to
 `getInput`. **Please use it with extreme care and only if you are absolutely
 sure that the ref is correctly forwarded otherwise `useCombobox` will
-unexpectedly fail.**
-
-#### `getComboboxProps`
-
-This method should be applied to the `input` wrapper element. It has similar
-return values to the `getRootProps` from vanilla `Downshift`, but renaming it as
-it's not a root element anymore. We are encouraging the correct `combobox` HTML
-structure as having the combobox wrapper as a root for the rest of the elements
-broke navigation and readings with assistive technologies. The wrapper should
-contain the `input` and the `toggleButton` and it should be on the same level
-with the `menu`.
-
-There are no required properties for this method.
-
-In some cases, you might want to completely bypass the `refKey` check. Then you
-can provide the object `{suppressRefError : true}` as the second argument to
-`getComboboxProps`. **Please use it with extreme care and only if you are
-absolutely sure that the ref is correctly forwarded otherwise `useCombobox` will
 unexpectedly fail.**
 
 ### actions
@@ -874,21 +1045,29 @@ described below.
 
 #### Input
 
-- `ArrowDown`: Moves `highlightedIndex` one position down. If
-  `circularNavigation` is true, when reaching the last option, `ArrowDown` will
-  move `highlightedIndex` to first position. Otherwise it won't change anything.
-- `ArrowUp`: Moves `highlightedIndex` one position up. If `circularNavigation`
-  is true, when reaching the first option, `ArrowUp` will move
-  `highlightedIndex` to last position. Otherwise it won't change anything.
+- `ArrowDown`: Moves `highlightedIndex` one position down. When reaching the
+  last option, `ArrowDown` will move `highlightedIndex` to first position.
+- `ArrowUp`: Moves `highlightedIndex` one position up. When reaching the first
+  option, `ArrowUp` will move `highlightedIndex` to last position.
+- `Alt+ArrowDown`: If the menu is closed, it will open it, without highlighting
+  any item.
+- `Alt+ArrowUp`: If the menu is open, it will close it and will select the item
+  that was highlighted.
 - `CharacterKey`: Will change the `inputValue` according to the value visible in
-  the `<input>`. `Backspace` or `Space` triggere the same event.
-- `End`: Moves `highlightedIndex` to last position.
-- `Home`: Moves `highlightedIndex` to first position.
+  the `<input>`. `Backspace` or `Space` trigger the same event.
+- `End`: If the menu is open, it will highlight the last item in the list.
+- `Home`: If the menu is open, it will highlight the first item in the list.
+- `PageUp`: If the menu is open, it will move the highlight the item 10
+  positions before the current selection.
+- `PageDown`: If the menu is open, it will move the highlight the item 10
+  positions after the current selection.
 - `Enter`: If there is a highlighted option, it will select it and close the
   menu.
 - `Escape`: It will close the menu if open. If the menu is closed, it will clear
   selection: the value in the `input` will become an empty string and the item
   stored as `selectedItem` will become `null`.
+- `Click`: If the menu is closed, it will open it. If the menu is open, it will
+  close it.
 - `Blur(Tab, Shift+Tab)`: It will close the menu and select the highlighted
   item, if any. The focus will move naturally to the next/previous element in
   the Tab order.
@@ -975,12 +1154,26 @@ It can be a great contributing opportunity to provide relevant use cases as
 docsite examples. If you have such an example, please create an issue with the
 suggestion and the Codesandbox for it, and we will take it from there.
 
-[combobox-aria]:
-  https://www.w3.org/TR/wai-aria-practices/examples/combobox/aria1.1pattern/listbox-combo.html
-[sandbox-example]: https://codesandbox.io/s/github/kentcdodds/downshift-examples?file=/src/hooks/useCombobox/basic-usage.js
+[combobox-aria-example]:
+  https://www.w3.org/WAI/ARIA/apg/example-index/combobox/combobox-autocomplete-list.html
+[combobox-aria-example-none]:
+  https://www.w3.org/WAI/ARIA/apg/example-index/combobox/combobox-autocomplete-none.html
+[combobox-aria-example-both]:
+  https://www.w3.org/WAI/ARIA/apg/example-index/combobox/combobox-autocomplete-both.html
+[sandbox-example]:
+  https://codesandbox.io/p/sandbox/github/kentcdodds/downshift-examples?file=%2Fsrc%2Fhooks%2FuseCombobox%2Fbasic-usage.js&moduleview=1
 [state-change-file]:
   https://github.com/downshift-js/downshift/blob/master/src/hooks/useCombobox/stateChangeTypes.js
 [blog-post-prop-getters]:
   https://blog.kentcdodds.com/how-to-give-rendering-control-to-users-with-prop-getters-549eaef76acf
 [docsite]: https://downshift-js.com/
-[sandbox-repo]: https://codesandbox.io/s/github/kentcdodds/downshift-examples
+[sandbox-repo]:
+  https://codesandbox.io/p/sandbox/github/kentcdodds/downshift-examples?file=%2Fsrc%2Findex.js&moduleview=1
+[advanced-react-component-patterns-course]:
+  https://github.com/downshift-js/downshift#advanced-react-component-patterns-course
+[migration-guide-v7]:
+  https://github.com/downshift-js/downshift/tree/master/src/hooks/MIGRATION_V7.md#usecombobox
+[migration-guide-v8]:
+  https://github.com/downshift-js/downshift/tree/master/src/hooks/MIGRATION_V8.md
+[migration-guide-v9]:
+  https://github.com/downshift-js/downshift/tree/master/src/hooks/MIGRATION_V9.md

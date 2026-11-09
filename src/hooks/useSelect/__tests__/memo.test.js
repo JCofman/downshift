@@ -1,36 +1,82 @@
 import React from 'react'
-import {renderUseSelect, renderSelect} from '../testUtils'
-import {items, defaultIds, MemoizedItem} from '../../testUtils'
+import {
+  renderUseSelect,
+  renderSelect,
+  keyDownOnToggleButton,
+  getToggleButton,
+  items,
+  defaultIds,
+  MemoizedItem,
+} from './utils'
+
+jest.mock('../../utils', () => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const utils = jest.requireActual('../../utils')
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const hooksUtils = jest.requireActual('../../../utils')
+
+  return {
+    ...utils,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    useGetterPropsCalledChecker: () => hooksUtils.noop,
+  }
+})
+
+// We are using React 18.
+jest.mock('react', () => {
+  return {
+    ...jest.requireActual('react'),
+    useId() {
+      return 'test-id'
+    },
+  }
+})
+
+beforeEach(jest.resetAllMocks)
+afterAll(jest.restoreAllMocks)
 
 test('functions are memoized', () => {
   const {result, rerender} = renderUseSelect()
   const firstRenderResult = result.current
   rerender()
   const secondRenderResult = result.current
+  expect(firstRenderResult.getItemProps).toBe(secondRenderResult.getItemProps)
+  expect(firstRenderResult.getLabelProps).toBe(secondRenderResult.getLabelProps)
+  expect(firstRenderResult.getMenuProps).toBe(secondRenderResult.getMenuProps)
+  expect(firstRenderResult.getToggleButtonProps).toBe(
+    secondRenderResult.getToggleButtonProps,
+  )
+  expect(firstRenderResult.openMenu).toBe(secondRenderResult.openMenu)
+  expect(firstRenderResult.closeMenu).toBe(secondRenderResult.closeMenu)
+  expect(firstRenderResult.toggleMenu).toBe(secondRenderResult.toggleMenu)
+  expect(firstRenderResult.setHighlightedIndex).toBe(
+    secondRenderResult.setHighlightedIndex,
+  )
+  expect(firstRenderResult.selectItem).toBe(secondRenderResult.selectItem)
+  expect(firstRenderResult.reset).toBe(secondRenderResult.reset)
+  expect(firstRenderResult.setInputValue).toBe(secondRenderResult.setInputValue)
   expect(firstRenderResult).toEqual(secondRenderResult)
 })
 
-test('will skip disabled items after component rerenders and items are memoized', () => {
+test('will skip disabled items after component rerenders and items are memoized', async () => {
   function renderItem(props) {
-    return (
-      <MemoizedItem
-        key={props.index}
-        disabled={props.index === items.length - 2}
-        {...props}
-      />
-    )
+    return <MemoizedItem key={props.index} {...props} />
+  }
+  function isItemDisabled(_item, index) {
+    return index === items.length - 2
   }
 
-  const {keyDownOnMenu, menu, rerender} = renderSelect({
+  const {user, rerender} = renderSelect({
+    isItemDisabled,
     isOpen: true,
     initialHighlightedIndex: items.length - 1,
     renderItem,
   })
 
-  rerender({renderItem, isOpen: true})
-  keyDownOnMenu('ArrowUp')
+  rerender({renderItem, isOpen: true, isItemDisabled})
+  await keyDownOnToggleButton(user, '{ArrowUp}')
 
-  expect(menu).toHaveAttribute(
+  expect(getToggleButton()).toHaveAttribute(
     'aria-activedescendant',
     defaultIds.getItemId(items.length - 3),
   )

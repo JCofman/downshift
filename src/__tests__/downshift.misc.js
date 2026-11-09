@@ -2,8 +2,8 @@
 // but we still want to have tested.
 
 import * as React from 'react'
-import * as ReactDOM from 'react-dom'
-import {render} from '@testing-library/react'
+import * as ReactDOM from 'react-dom/client'
+import {act, render} from '@testing-library/react'
 import Downshift from '../'
 
 beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => {}))
@@ -48,7 +48,9 @@ test('selectItemAtIndex can select item that is an empty string', () => {
     </div>
   )
   const {selectItemAtIndex, childrenSpy} = setup({children})
-  selectItemAtIndex(1)
+  act(() => {
+    selectItemAtIndex(1)
+  })
   expect(childrenSpy).toHaveBeenLastCalledWith(
     expect.objectContaining({selectedItem: ''}),
   )
@@ -56,7 +58,9 @@ test('selectItemAtIndex can select item that is an empty string', () => {
 
 test('toggleMenu can take no arguments at all', () => {
   const {toggleMenu, childrenSpy} = setup()
-  toggleMenu()
+  act(() => {
+    toggleMenu()
+  })
   expect(childrenSpy).toHaveBeenCalledWith(
     expect.objectContaining({
       isOpen: true,
@@ -64,8 +68,9 @@ test('toggleMenu can take no arguments at all', () => {
   )
 })
 
-test('clearItems clears the all items', () => {
+test('clearItems clears all items', () => {
   const item = 'Chess'
+
   const children = ({getItemProps}) => (
     <div>
       <div key={item} {...getItemProps({item})}>
@@ -73,15 +78,37 @@ test('clearItems clears the all items', () => {
       </div>
     </div>
   )
-  // IMPLEMENTATION DETAIL TEST :-(
-  // eslint-disable-next-line react/no-render-return-value
-  const downshiftInstance = ReactDOM.render(
-    <Downshift>{children}</Downshift>,
-    document.createElement('div'),
-  )
+
+  // Wrap Downshift to expose its instance methods through a ref
+  const DownshiftWrapper = React.forwardRef((_props, ref) => {
+    const innerRef = React.useRef(null)
+
+    React.useImperativeHandle(ref, () => innerRef.current)
+
+    return <Downshift ref={innerRef}>{children}</Downshift>
+  })
+
+  const container = document.createElement('div')
+  const root = ReactDOM.createRoot(container)
+
+  const dsRef = React.createRef()
+
+  // eslint-disable-next-line testing-library/no-unnecessary-act
+  act(() => {
+    root.render(<DownshiftWrapper ref={dsRef} />)
+  })
+
+  const downshiftInstance = dsRef.current
+
   expect(downshiftInstance.items).toEqual([item])
-  downshiftInstance.clearItems()
+
+  act(() => {
+    downshiftInstance.clearItems()
+  })
+
   expect(downshiftInstance.items).toEqual([])
+
+  root.unmount()
 })
 
 test('reset can take no arguments at all', () => {
@@ -133,7 +160,9 @@ test('should not log error during strict mode during reset', () => {
 test('can use setState for ultimate power', () => {
   const {childrenSpy, setState} = setup()
   childrenSpy.mockClear()
-  setState({isOpen: true, selectedItem: 'hi'})
+  act(() => {
+    setState({isOpen: true, selectedItem: 'hi'})
+  })
   expect(childrenSpy).toHaveBeenCalledTimes(1)
   expect(childrenSpy).toHaveBeenCalledWith(
     expect.objectContaining({isOpen: true, selectedItem: 'hi'}),

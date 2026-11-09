@@ -3,6 +3,11 @@ import {render, screen} from '@testing-library/react'
 import Downshift from '../'
 import {resetIdCounter} from '../utils'
 
+jest.mock('react', () => {
+  const {useId, ...react} = jest.requireActual('react')
+  return react
+})
+
 test('renders with correct and predictable auto generated id upon resetIdCounter call', () => {
   resetIdCounter()
 

@@ -1,0 +1,32 @@
+import * as React from 'react'
+
+export default function Docs() {
+  return (
+    <div className="docs-index">
+      Downshift Docs for E2E Testing
+      <ul>
+        <li>
+          <a href="./useCombobox">useCombobox</a>
+        </li>
+        <li>
+          <a href="./useSelect">useSelect</a>
+        </li>
+        <li>
+          <a href="./useMultipleCombobox">useMultipleCombobox</a>
+        </li>
+        <li>
+          <a href="./useMultipleSelect">useMultipleSelect</a>
+        </li>
+        <li>
+          <a href="./combobox">Downshift</a>
+        </li>
+        <li>
+          <a href="./useTagGroup">useTagGroup</a>
+        </li>
+        <li>
+          <a href="./useTagGroupCombobox">useTagGroupCombobox</a>
+        </li>
+      </ul>
+    </div>
+  )
+}

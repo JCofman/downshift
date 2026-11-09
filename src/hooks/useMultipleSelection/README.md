@@ -1,5 +1,14 @@
 # useMultipleSelection
 
+## Deprecated: migration to useTagGroup
+
+If you're considering a multiple selection solution with tags, check
+[useTagGroup][use-tag-group].
+
+If you're already using the hook, migrate to `useTagGroup`. It's meant to offer
+a more intuitive and extensible API than `useMultipleSelection`. The
+[migration-guide][migration-guide] shows how to migrate to the new hook.
+
 ## The problem
 
 You have a custom `select` or a `combobox` in your applications which performs a
@@ -27,6 +36,14 @@ arrow navigation between dropdown and items, navigation between the items
 themselves, removing and adding items, and also helpful `aria-live` messages
 such as when an item has been removed from selection.
 
+## Migration through breaking changes
+
+The hook received breaking changes related to how it works, as well as the API,
+starting with v8. They are documented here:
+
+- [v8 migration guide][migration-guide-v8]
+- [v9 migration guide][migration-guide-v9]
+
 ## Table of Contents
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
@@ -34,7 +51,6 @@ such as when an item has been removed from selection.
 
 - [Usage](#usage)
 - [Basic Props](#basic-props)
-  - [itemToString](#itemtostring)
   - [onSelectedItemsChange](#onselecteditemschange)
   - [stateReducer](#statereducer)
 - [Advanced Props](#advanced-props)
@@ -44,7 +60,8 @@ such as when an item has been removed from selection.
   - [initialActiveIndex](#initialactiveindex)
   - [defaultSelectedItems](#defaultselecteditems)
   - [defaultActiveIndex](#defaultactiveindex)
-  - [getA11yRemovalMessage](#geta11yremovalmessage)
+  - [itemToKey](#itemtokey)
+  - [getA11yStatusMessage](#geta11ystatusmessage)
   - [onActiveIndexChange](#onactiveindexchange)
   - [onStateChange](#onstatechange)
   - [activeIndex](#activeindex)
@@ -59,6 +76,7 @@ such as when an item has been removed from selection.
 - [Event Handlers](#event-handlers)
   - [Default handlers](#default-handlers)
   - [Customizing Handlers](#customizing-handlers)
+- [Examples](#examples)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -70,103 +88,215 @@ such as when an item has been removed from selection.
 import * as React from 'react'
 import {render} from 'react-dom'
 import {useCombobox, useMultipleSelection} from 'downshift'
-// items = ['Neptunium', 'Plutonium', ...]
-import {
-  items,
-  menuStyles,
-  comboboxWrapperStyles,
-  comboboxStyles,
-  selectedItemStyles,
-  selectedItemIconStyles,
-} from './utils'
 
-const DropdownMultipleCombobox = () => {
-  const [inputValue, setInputValue] = useState('')
-  const {
-    getSelectedItemProps,
-    getDropdownProps,
-    addSelectedItem,
-    removeSelectedItem,
-    selectedItems,
-  } = useMultipleSelection({initialSelectedItems: [items[0], items[1]]})
-  const getFilteredItems = items =>
-    items.filter(
-      item =>
-        selectedItems.indexOf(item) < 0 &&
-        item.toLowerCase().startsWith(inputValue.toLowerCase()),
-    )
+const colors = [
+  'Black',
+  'Red',
+  'Green',
+  'Blue',
+  'Orange',
+  'Purple',
+  'Pink',
+  'Orchid',
+  'Aqua',
+  'Lime',
+  'Gray',
+  'Brown',
+  'Teal',
+  'Skyblue',
+]
+
+const initialSelectedItems = [colors[0], colors[1]]
+
+function getFilteredItems(selectedItems, inputValue) {
+  const lowerCasedInputValue = inputValue.toLowerCase()
+
+  return colors.filter(
+    colour =>
+      !selectedItems.includes(colour) &&
+      colour.toLowerCase().startsWith(lowerCasedInputValue),
+  )
+}
+
+function DropdownMultipleCombobox() {
+  const [inputValue, setInputValue] = React.useState('')
+  const [selectedItems, setSelectedItems] = React.useState(initialSelectedItems)
+  const items = React.useMemo(
+    () => getFilteredItems(selectedItems, inputValue),
+    [selectedItems, inputValue],
+  )
+
+  const {getSelectedItemProps, getDropdownProps, removeSelectedItem} =
+    useMultipleSelection({
+      selectedItems,
+      onStateChange({selectedItems: newSelectedItems, type}) {
+        switch (type) {
+          case useMultipleSelection.stateChangeTypes
+            .SelectedItemKeyDownBackspace:
+          case useMultipleSelection.stateChangeTypes.SelectedItemKeyDownDelete:
+          case useMultipleSelection.stateChangeTypes.DropdownKeyDownBackspace:
+          case useMultipleSelection.stateChangeTypes.FunctionRemoveSelectedItem:
+            setSelectedItems(newSelectedItems)
+            break
+          default:
+            break
+        }
+      },
+    })
   const {
     isOpen,
     getToggleButtonProps,
     getLabelProps,
     getMenuProps,
     getInputProps,
-    getComboboxProps,
     highlightedIndex,
     getItemProps,
-    selectItem,
+    selectedItem,
+    clearSelection,
   } = useCombobox({
+    items,
     inputValue,
-    items: getFilteredItems(items),
-    onStateChange: ({inputValue, type, selectedItem}) => {
-      switch (type) {
-        case useCombobox.stateChangeTypes.InputChange:
-          setInputValue(inputValue)
+    selectedItem: null,
+    stateReducer(state, actionAndChanges) {
+      const {changes, type} = actionAndChanges
 
-          break
+      switch (type) {
         case useCombobox.stateChangeTypes.InputKeyDownEnter:
         case useCombobox.stateChangeTypes.ItemClick:
         case useCombobox.stateChangeTypes.InputBlur:
-          if (selectedItem) {
-            setInputValue('')
-            addSelectedItem(selectedItem)
-            selectItem(null)
+          return {
+            ...changes,
+            ...(changes.selectedItem && {isOpen: true, highlightedIndex: 0}),
           }
+        default:
+          return changes
+      }
+    },
+    onStateChange({
+      inputValue: newInputValue,
+      type,
+      selectedItem: newSelectedItem,
+    }) {
+      switch (type) {
+        case useCombobox.stateChangeTypes.InputKeyDownEnter:
+        case useCombobox.stateChangeTypes.ItemClick:
+          setSelectedItems([...selectedItems, newSelectedItem])
 
+          break
+        case useCombobox.stateChangeTypes.InputChange:
+          setInputValue(newInputValue)
           break
         default:
           break
       }
     },
   })
-
   return (
-    <div>
-      <label {...getLabelProps()}>Choose some elements:</label>
-      <div style={comboboxWrapperStyles}>
-        {selectedItems.map((selectedItem, index) => (
-          <span
-            style={selectedItemStyles}
-            key={`selected-item-${index}`}
-            {...getSelectedItemProps({selectedItem, index})}
-          >
-            {selectedItem}
-            <span
-              style={selectedItemIconStyles}
-              onClick={() => removeSelectedItem(selectedItem)}
-            >
-              &#10005;
-            </span>
-          </span>
-        ))}
-        <div style={comboboxStyles} {...getComboboxProps()}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: 'fit-content',
+        justifyContent: 'center',
+        marginTop: 100,
+        alignSelf: 'center',
+      }}
+    >
+      <label
+        style={{
+          fontWeight: 'bolder',
+          color: selectedItem ? selectedItem : 'black',
+        }}
+        {...getLabelProps()}
+      >
+        Choose an element:
+      </label>
+      <div
+        style={{
+          display: 'inline-flex',
+          gap: '8px',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          padding: '6px',
+        }}
+      >
+        {selectedItems.map(
+          function renderSelectedItem(selectedItemForRender, index) {
+            return (
+              <span
+                style={{
+                  backgroundColor: 'lightgray',
+                  paddingLeft: '4px',
+                  paddingRight: '4px',
+                  borderRadius: '6px',
+                }}
+                key={`selected-item-${index}`}
+                {...getSelectedItemProps({
+                  selectedItem: selectedItemForRender,
+                  index,
+                })}
+              >
+                {selectedItemForRender}
+                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events */}
+                <span
+                  style={{padding: '4px', cursor: 'pointer'}}
+                  onClick={e => {
+                    e.stopPropagation()
+                    removeSelectedItem(null)
+                  }}
+                >
+                  &#10005;
+                </span>
+              </span>
+            )
+          },
+        )}
+        <div>
           <input
+            style={{padding: '4px'}}
             {...getInputProps(getDropdownProps({preventKeyAction: isOpen}))}
+            data-testid="combobox-input"
           />
-          <button {...getToggleButtonProps()} aria-label={'toggle menu'}>
-            &#8595;
+          <button
+            style={{padding: '4px 8px'}}
+            aria-label="toggle menu"
+            data-testid="combobox-toggle-button"
+            {...getToggleButtonProps()}
+          >
+            {isOpen ? <>&#8593;</> : <>&#8595;</>}
+          </button>
+          <button
+            style={{padding: '4px 8px'}}
+            aria-label="clear selection"
+            data-testid="clear-button"
+            onClick={clearSelection}
+          >
+            &#10007;
           </button>
         </div>
       </div>
-      <ul {...getMenuProps()} style={menuMultipleStyles}>
+      <ul
+        {...getMenuProps()}
+        style={{
+          listStyle: 'none',
+          width: '100%',
+          padding: '0',
+          margin: '4px 0 0 0',
+        }}
+      >
         {isOpen &&
-          getFilteredItems(items).map((item, index) => (
+          items.map((item, index) => (
             <li
-              style={
-                highlightedIndex === index ? {backgroundColor: '#bde4ff'} : {}
-              }
+              style={{
+                padding: '4px',
+                backgroundColor: highlightedIndex === index ? '#bde4ff' : null,
+              }}
               key={`${item}${index}`}
-              {...getItemProps({item, index})}
+              {...getItemProps({
+                item,
+                index,
+                'data-testid': `downshift-item-${index}`,
+              })}
             >
               {item}
             </li>
@@ -185,14 +315,6 @@ The equivalent example with `useSelect` is [here][select-sandbox-example].
 
 This is the list of props that you should probably know about. There are some
 [advanced props](#advanced-props) below as well.
-
-### itemToString
-
-> `function(item: any)` | defaults to: `i => (i == null ? '' : String(i))`
-
-If your items are stored as, say, objects instead of strings, downshift still
-needs a string representation for each one. This is required for accessibility
-aria-live messages (e.g., after removing a selection).
 
 ### onSelectedItemsChange
 
@@ -309,33 +431,71 @@ Pass an array of items that are going to be used when downshift is reset.
 Pass a number that sets the index of the focused / active selected item when
 downshift is reset.
 
-### getA11yRemovalMessage
+### itemToKey
+
+> `function(item: any)` | defaults to: `item => item`
+
+Used to determine the uniqueness of an item when searching for the item or
+comparing the item with another. Returns the item itself, by default, so the
+comparing/searching is done internally via referential equality.
+
+If using items as objects and their reference will change during use, you can
+use the function to generate a unique key for each item, such as an `id` prop.
+
+```js
+// initial items.
+const selectedItems = [
+  {id: 1, value: 'Apples'},
+  {id: 2, value: 'Oranges'},
+]
+// the same items but with different references, for any reason.
+const newSelectedItems = [
+  {id: 1, value: 'Apples'},
+  {id: 2, value: 'Oranges'},
+]
+
+function itemToKey(item) {
+  return item.id
+  // and we will do the comparison like: const isChanged = itemToKey(prevSelectedItem) !== itemToKey(nextSelectedItem)
+}
+```
+
+### getA11yStatusMessage
 
 > `function({/* see below */})` | default messages provided in English
 
-This function is similar to the `getA11yStatusMessage` or
-`getA11ySelectionMessage` from `useSelect` and `useCombobox` but it is
-generating an ARIA a11y message when an item is removed. It is passed as props
-to a status updating function nested within that allows you to create your own
-ARIA statuses. It is called when an item is removed and the size of
-`selectedItems` decreases.
+This function is passed as props to a status updating function nested within
+that allows you to create your own ARIA statuses. It is called when the state
+changes: `selectedItem`, `highlightedIndex`, `inputValue` or `isOpen`.
 
-A default `getA11yRemovalMessage` function is provided. When an item is removed,
-the message is a removal related one, narrating "`itemToString(removedItem)` has
-been removed".
+There is no default function provided anymore since v9, so if there's no prop
+passed, no aria live status message is created. An implementation that resembles
+the previous default is written below, should you want to keep pre v9 behaviour.
 
-The object you are passed to generate your status message for
-`getA11yRemovalMessage` has the following properties:
+We don't provide this as a default anymore since we consider that screen readers
+have been significantly improved and they can convey information about items
+count, possible actions and highlighted items only from the HTML markup, without
+the need for aria-live regions.
 
-<!-- This table was generated via http://www.tablesgenerator.com/markdown_tables -->
+```js
+function getA11yStatusMessage(state) {
+  const {selectedItems} = state
 
-| property              | type            | description                                                                                  |
-| --------------------- | --------------- | -------------------------------------------------------------------------------------------- |
-| `resultCount`         | `number`        | The count of selected items in the list.                                                     |
-| `itemToString`        | `function(any)` | The `itemToString` function (see props) for getting the string value from one of the options |
-| `removedSelectedItem` | `any`           | The value of the currently removed item                                                      |
-| `activeSelectedItem`  | `any`           | The value of the currently active item                                                       |
-| `activeIndex`         | `number`        | The index of the currently active item.                                                      |
+  if (selectedItems.length === previousSelectedItemsRef.current.length) {
+    return ''
+  }
+
+  const removedSelectedItem = previousSelectedItemsRef.current.find(
+    selectedItem =>
+      selectedItems.findIndex(
+        item => props.itemToKey(item) === props.itemToKey(selectedItem),
+      ) < 0,
+  )
+
+  // where itemToString is a function that returns the string equivalent for an item.
+  return `${itemToString(removedSelectedItem)} has been removed.`
+}
+```
 
 ### onActiveIndexChange
 
@@ -449,8 +609,8 @@ that state from other components, `redux`, `react-router`, or anywhere else.
 
 > Note: This is very similar to how normal controlled components work elsewhere
 > in react (like `<input />`). If you want to learn more about this concept, you
-> can learn about that from this the
-> [Advanced React Component Patterns course](#advanced-react-component-patterns-course)
+> can learn about that from this the [Advanced React Component Patterns
+> course][advanced-react-component-patterns-course]
 
 ## Returned props
 
@@ -460,16 +620,11 @@ You use the hook like so:
 import {useMultipleSelection} from 'downshift'
 import {items} from './utils'
 
-const {
-  getDropdownProps,
-  getSelectedItemProps,
-  selectedItems,
-  reset,
-  ...rest
-} = useMultipleSelection({
-  initialSelectedItems: [items[0], [items[1]]],
-  ...otherProps,
-})
+const {getDropdownProps, getSelectedItemProps, selectedItems, reset, ...rest} =
+  useMultipleSelection({
+    initialSelectedItems: [items[0], [items[1]]],
+    ...otherProps,
+  })
 
 return (
   <div>
@@ -792,12 +947,23 @@ docsite examples. If you have such an example, please create an issue with the
 suggestion and the Codesandbox for it, and we will take it from there.
 
 [sandbox-example]:
-  https://codesandbox.io/s/github/kentcdodds/downshift-examples?file=/src/hooks/useMultipleSelection/combobox.js
+  https://codesandbox.io/p/sandbox/github/kentcdodds/downshift-examples?file=%2Fsrc%2Fhooks%2FuseMultipleSelection%2Fcombobox.js&moduleview=1
 [select-sandbox-example]:
-  https://codesandbox.io/s/github/kentcdodds/downshift-examples?file=/src/hooks/useMultipleSelection/select.js
+  https://codesandbox.io/p/sandbox/github/kentcdodds/downshift-examples?file=%2Fsrc%2Fhooks%2FuseMultipleSelection%2Fselect.js&moduleview=1
 [state-change-file]:
   https://github.com/downshift-js/downshift/blob/master/src/hooks/useMultipleSelection/stateChangeTypes.js
 [blog-post-prop-getters]:
   https://kentcdodds.com/blog/how-to-give-rendering-control-to-users-with-prop-getters-549eaef76acf
 [docsite]: https://downshift-js.com/
-[sandbox-repo]: https://codesandbox.io/s/github/kentcdodds/downshift-examples
+[sandbox-repo]:
+  https://codesandbox.io/p/sandbox/github/kentcdodds/downshift-examples?file=%2Fsrc%2Findex.js&moduleview=1
+[advanced-react-component-patterns-course]:
+  https://github.com/downshift-js/downshift#advanced-react-component-patterns-course
+[migration-guide-v8]:
+  https://github.com/downshift-js/downshift/tree/master/src/hooks/MIGRATION_V8.md
+[migration-guide-v9]:
+  https://github.com/downshift-js/downshift/tree/master/src/hooks/MIGRATION_V9.md
+[use-tag-group]:
+  https://github.com/downshift-js/downshift/tree/master/src/hooks/useTagGroup/README.md
+[migration-guide]:
+  https://github.com/downshift-js/downshift/tree/master/src/hooks/useMultipleSelection/MIGRATION_GUIDE.md
